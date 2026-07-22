@@ -162,3 +162,17 @@ Claude Code pipes a JSON payload on stdin. The main-session payload has session/
 ### Notes
 
 The end of `statusline.js` contains an optional, environment-specific integration: if `AUTOCLAUDE_BROADCAST` is set to a `broadcast.js` module path, the current session info is broadcast to an "AutoClaude" sensor. Wrapped in try/catch; silently skips when the variable is unset or the path is missing, so it never affects status line output.
+
+### Releasing a new version (maintainer)
+
+Pushes to `main` trigger `.github/workflows/publish.yml`, which auto-publishes to npm — but only when the version in `package.json` differs from what's already on npm. Docs-only pushes are silent. The release flow:
+
+```bash
+npm version patch   # bumps version in package.json + creates local v1.0.3 tag
+# update CHANGELOG.md
+git add . && git commit -m "..." && git push
+```
+
+CI then: publishes to `@tangjianfang/claudecode-statusline`, publishes to `@tangjianfang/cc-statusline`, pushes the `v1.0.3` tag, and creates the GitHub Release.
+
+**Required GitHub secret:** `NPM_TOKEN` — a granular access token with bypass-2fa + publish scope on both packages. Add it at `https://github.com/tangjianfang/claudecode-statusline/settings/secrets/actions`.

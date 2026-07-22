@@ -1,0 +1,94 @@
+name: publish
+
+# Auto-publish to npm on every push to main, but ONLY when the version in
+# package.json differs from the latest published version. This protects
+# against docs-only / fixup commits accidentally publishing empty
+# versions. The maintainer's flow becomes:
+#
+#   1. bump version locally:  npm version patch
+#   2. update CHANGELOG.md
+#   3. git add . && git commit -m "..." && git push
+#   4. CI does: publish canonical + alias + git tag + GitHub Release.
+#
+# Requires the NPM_TOKEN secret to be set in repo Settings → Secrets.
+# Use a granular access token with bypass-2fa + publish scope on both
+# @tangjianfang/claudecode-statusline and @tangjianfang/cc-statusline.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only one publish runs at a time — additional pushes queue up rather than
+# race for npm's version namespace.
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # for git push --tags and gh release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Compare the version in package.json against the latest version
+      # published under the canonical name. If they match, skip everything
+      # — no version churn from docs-only pushes.
+      - name: Check if a new version needs publishing
+        id: check
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view "@tangjianfang/claudecode-statusline" version 2>/dev/null || echo "0.0.0")
+          echo "pkg_version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$PKG_VERSION" != "$PUBLISHED" ]; then
+            echo "needs_publish=true" >> "$GITHUB_OUTPUT"
+            echo "Local $PKG_VERSION != published $PUBLISHED — will publish."
+          else
+            echo "needs_publish=false" >> "$GITHUB_OUTPUT"
+            echo "Local $PKG_VERSION is already published — skipping."
+          fi
+
+      - name: Publish @tangjianfang/claudecode-statusline
+        if: steps.check.outputs.needs_publish == 'true'
+        run: npm publish --access=public --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # The same tarball ships under both names — temporarily rewrite
+      # the name field, publish, restore. The checkout is ephemeral so
+      # there's nothing to clean up afterwards.
+      - name: Publish @tangjianfang/cc-statusline
+        if: steps.check.outputs.needs_publish == 'true'
+        run: |
+          node -e "
+            const fs=require('fs');
+            const j=JSON.parse(fs.readFileSync('package.json','utf8'));
+            j.name='@tangjianfang/cc-statusline';
+            fs.writeFileSync('package.json', JSON.stringify(j,null,2)+'\n');
+          "
+          npm publish --access=public --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Tag the release commit
+        if: steps.check.outputs.needs_publish == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ steps.check.outputs.pkg_version }}" HEAD
+          git push origin "v${{ steps.check.outputs.pkg_version }}"
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.needs_publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.check.outputs.pkg_version }}
+          name: "v${{ steps.check.outputs.pkg_version }}"
+          generate_release_notes: true
