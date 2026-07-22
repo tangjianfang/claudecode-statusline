@@ -1,0 +1,27 @@
+{
+  "name": "cc-statusline",
+  "version": "1.0.0",
+  "description": "Custom status line for Claude Code: shows model, output TPS, token/cost totals, git branch and context usage",
+  "main": "statusline.js",
+  "bin": {
+    "cc-statusline": "statusline.js",
+    "loopctl": "loopctl.js",
+    "pricing-updater": "pricing-updater.js"
+  },
+  "scripts": {
+    "check": "node --check statusline.js && node --check loopctl.js && node --check pricing-updater.js",
+    "install": "node statusline.js --install && node loopctl.js --install",
+    "install-statusline": "node statusline.js --install",
+    "install-loopctl": "node loopctl.js --install",
+    "update-pricing": "node pricing-updater.js",
+    "pricing:list": "node pricing-updater.js --list",
+    "presets": "node loopctl.js presets",
+    "demo": "node -e \"process.stdout.write('{}')\" | node statusline.js",
+    "demo:subagent": "node -e \"process.stdout.write(JSON.stringify({tasks:[{id:'t1',name:'Explore',tokenCount:100,startTime:'2026-01-01T00:00:00Z'}]}))\" | node statusline.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "license": "MIT",
+  "private": true
+}

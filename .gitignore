@@ -1,0 +1,5 @@
+node_modules/
+*.log
+
+# loopctl runtime state (per-project, managed by loopctl.js)
+.claude/loop-state.json
