@@ -40,7 +40,17 @@
     "cli",
     "terminal",
     "cost",
-    "tokens"
+    "tokens",
+    "auto-continue",
+    "agentic-loop",
+    "stop-hook",
+    "claude-hooks",
+    "cost-tracking",
+    "token-counter",
+    "tps",
+    "pricing",
+    "litellm",
+    "rate-limit"
   ],
   "engines": {
     "node": ">=16"
@@ -54,5 +64,8 @@
   },
   "bugs": {
     "url": "https://github.com/tangjianfang/claudecode-statusline/issues"
+  },
+  "dependencies": {
+    "@tangjianfang/cc-statusline": "^1.0.1"
   }
 }
