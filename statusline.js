@@ -139,7 +139,16 @@ function buildBranchUrl(repo, branch) {
   return null;
 }
 
+// When --yes is passed alongside --install (used by npm postinstall),
+// auto-answer yes to overwrite prompts so the install can run unattended.
+// Manual `statusline.js --install` is unchanged — --yes must be explicit.
+const AUTO_YES = process.argv.includes('--yes');
+
 function promptYesNo(question) {
+  if (AUTO_YES) {
+    console.log(`${question} (y/n): y`);
+    return Promise.resolve(true);
+  }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => {
     rl.question(`${question} (y/n): `, answer => {

@@ -28,14 +28,29 @@ Claude Code's stdin JSON for the status line does not include token/timing data,
 ## Install
 
 ```bash
-# From npm (installs cc-statusline, loopctl, pricing-updater as global commands)
 npm install -g @tangjianfang/claudecode-statusline
-
-# Or from GitHub
-git clone https://github.com/tangjianfang/claudecode-statusline.git
 ```
 
-After installing from npm, the three global commands (`cc-statusline`, `loopctl`, `pricing-updater`) are ready to use. The status line and loopctl still need to be wired into Claude Code's settings — see [Installing the status line](#installing-the-status-line) and [Install](#install-1) (loopctl) below. A pre-npm-published, identical package is also available under the shorter name `@tangjianfang/cc-statusline`.
+That's it. The package's `postinstall` hook automatically:
+
+- copies `statusline.js` and `loopctl.js` to `~/.claude/`
+- registers the status line as both `statusLine` and `subagentStatusLine` in `~/.claude/settings.json`
+- registers `loopctl` in `settings.json`'s `hooks.Stop` array (alongside any existing Stop hooks)
+- seeds `~/.claude/pricing.json` if it doesn't exist yet
+
+Restart Claude Code to see the new status line. No further commands needed. (If you ran with `--ignore-scripts`, finish the wiring manually with `cc-statusline --install && loopctl --install`.)
+
+A pre-npm-published, identical package is also available under the shorter name `@tangjianfang/cc-statusline`.
+
+### Install from GitHub (no npm)
+
+```bash
+git clone https://github.com/tangjianfang/claudecode-statusline.git
+cd claudecode-statusline
+npm run install    # runs both --install flows
+```
+
+This calls each tool's `--install` manually with the standard y/n prompts (handy if you want fine-grained control over what gets overwritten).
 
 ## Installing the status line
 

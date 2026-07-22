@@ -13,13 +13,14 @@
     "loopctl.js",
     "pricing-updater.js",
     "pricing.json",
+    "scripts/postinstall.js",
     "install.bat",
     "install-loopctl.bat",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check statusline.js && node --check loopctl.js && node --check pricing-updater.js",
+    "check": "node --check statusline.js && node --check loopctl.js && node --check pricing-updater.js && node --check scripts/postinstall.js",
     "install": "node statusline.js --install && node loopctl.js --install",
     "install-statusline": "node statusline.js --install",
     "install-loopctl": "node loopctl.js --install",
@@ -27,7 +28,8 @@
     "pricing:list": "node pricing-updater.js --list",
     "presets": "node loopctl.js presets",
     "demo": "node -e \"process.stdout.write('{}')\" | node statusline.js",
-    "demo:subagent": "node -e \"process.stdout.write(JSON.stringify({tasks:[{id:'t1',name:'Explore',tokenCount:100,startTime:'2026-01-01T00:00:00Z'}]}))\" | node statusline.js"
+    "demo:subagent": "node -e \"process.stdout.write(JSON.stringify({tasks:[{id:'t1',name:'Explore',tokenCount:100,startTime:'2026-01-01T00:00:00Z'}]}))\" | node statusline.js",
+    "postinstall": "node scripts/postinstall.js"
   },
   "keywords": [
     "claude-code",
