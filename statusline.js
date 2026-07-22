@@ -325,6 +325,39 @@ if (process.argv[2] === 'status') {
   return;
 }
 
+// --help / -H / help: print the full command reference. Also auto-show when
+// the user invokes `cc-statusline` directly in a terminal (stdin is a TTY)
+// without piping anything — Claude Code always pipes a payload, so this
+// branch is only hit when a human is poking at the bin interactively.
+function printStatuslineHelp() {
+  console.log(`cc-statusline — Claude Code status line
+https://github.com/tangjianfang/claudecode-statusline
+
+This tool is normally called BY Claude Code (it pipes a JSON payload to
+stdin and renders the status line). You don't usually invoke it directly
+unless you're checking the install or debugging.
+
+USAGE (called by Claude Code automatically):
+  echo '{...payload...}' | cc-statusline     # renders the status line
+
+HUMAN COMMANDS:
+  cc-statusline --install        install as your statusLine + subagentStatusLine (~/.claude/)
+  cc-statusline status           show what's currently wired (files, settings.json, pricing.json)
+  cc-statusline --help | -H      show this help
+
+DOCS:  https://github.com/tangjianfang/claudecode-statusline#readme`);
+}
+
+if (
+  process.argv.includes('--help') ||
+  process.argv.includes('-H') ||
+  process.argv[2] === 'help' ||
+  (process.argv.length <= 2 && process.stdin.isTTY === true)
+) {
+  printStatuslineHelp();
+  return;
+}
+
 // Resolve the .git directory by walking up from startDir. Handles the common
 // case (a real .git directory) plus the "gitdir: ..." pointer file used by
 // worktrees and submodules. Returns an absolute path or null.

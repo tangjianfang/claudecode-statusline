@@ -31,5 +31,23 @@ function runInstall(script) {
 console.log('[postinstall] Wiring status line + loopctl into Claude Code...');
 runInstall('statusline.js');
 runInstall('loopctl.js');
-console.log('[postinstall] Done. Restart Claude Code to see the status line.');
-console.log('[postinstall] Enable the loop in any project with: loopctl on --max 8 --push');
+
+// First-run panel: show the user what's now available and where to find
+// more — they shouldn't have to read the README to discover commands.
+console.log(`
+[postinstall] ✅ Status line + loopctl are wired into Claude Code.
+
+Quick reference (run any of these for the full list):
+  cc-statusline --help        status line command reference
+  loopctl --help              loopctl command reference
+  pricing-updater --help      pricing refresh reference
+
+Most common commands:
+  cc-statusline status               show what's wired
+  loopctl on --max 8 --push          enable auto-loop in current project
+  loopctl off                        disable it
+  loopctl status                     show loop state for current project
+  loopctl presets                    list built-in prompts
+
+Restart Claude Code to see the new status line.
+`);

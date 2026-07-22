@@ -173,6 +173,29 @@ function formatEntry(e) {
   return `in:$${e.in}/M out:$${e.out}/M cacheRead:$${e.cacheRead}/M cacheWrite:$${e.cacheWrite}/M`;
 }
 
+function printUpdaterHelp() {
+  console.log(`pricing-updater — refresh ~/.claude/pricing.json from the litellm price table
+https://github.com/tangjianfang/claudecode-statusline
+
+Run MANUALLY whenever you want fresh rates. There is no scheduled task / auto-update:
+silently rewriting rate data in the background (with the network + trust risks that
+entails) is not something this tool does for you.
+
+USAGE:
+  pricing-updater                                fetch mainstream providers' canonical chat models, merge into ~/.claude/pricing.json
+  pricing-updater --model KEY                    also include a specific litellm key (repeatable)
+  pricing-updater --list [pattern]               print matching keys + rates, write nothing
+  pricing-updater --overwrite                    replace the target file entirely instead of merging
+  pricing-updater --out PATH --overwrite         write to PATH instead of ~/.claude/pricing.json
+                                                  (maintainer: --out pricing.json refreshes the repo's shipped copy)
+  pricing-updater --source URL                   use a different litellm source URL
+
+OTHER:
+  pricing-updater --help | -H    show this help
+
+DOCS:  https://github.com/tangjianfang/claudecode-statusline#refreshing-rates-manually`);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const extraModels = [];
@@ -188,21 +211,17 @@ async function main() {
     else if (a === '--overwrite') overwrite = true;
     else if (a === '--source') sourceUrl = args[++i];
     else if (a === '--out') outFile = args[++i];
-    else if (a === '--help' || a === '-h') {
-      console.log(`Usage:
-  pricing-updater.js                 fetch all mainstream providers' canonical chat models, merge into ~/.claude/pricing.json
-  pricing-updater.js --model KEY     also include a specific litellm key (repeatable)
-  pricing-updater.js --list [pat]    print matching litellm keys + rates, write nothing
-  pricing-updater.js --overwrite     replace the target file entirely instead of merging
-  pricing-updater.js --out PATH     write to PATH instead of ~/.claude/pricing.json
-                                    (maintainer: use --out pricing.json to refresh the repo's shipped copy)
-  pricing-updater.js --source URL    use a different source URL
-
-Run manually whenever you want fresh rates. The status line picks up changes on
-its next render. (No scheduled task is registered — by design, since silently
-overwriting rates in the background is risky.)`);
+    else if (a === '--help' || a === '-h' || a === '-H') {
+      printUpdaterHelp();
       return;
     }
+  }
+
+  // No args + no recognized command → show help (so `pricing-updater` with
+  // nothing else prints the full reference, like the other tools do).
+  if (args.length === 0) {
+    printUpdaterHelp();
+    return;
   }
 
   console.log(`Fetching pricing from ${sourceUrl} ...`);

@@ -290,16 +290,42 @@ async function install() {
   console.log(`Registered Stop hook in ${settingsPath}`);
 }
 
-function printUsage() {
-  console.log(`Usage:
-  loopctl on [--max N] [--push] [--no-push] [--preset <name>] [--prompt "text"]   enable the loop for this project
-  loopctl off                                                                     disable the loop for this project
-  loopctl status                                                                  show current loop state
-  loopctl presets                                                                 list built-in --preset prompts
-  loopctl --install                                                               install as a global tool + Stop hook`);
+function printHelp() {
+  console.log(`loopctl — opt-in auto-continue loop for Claude Code
+https://github.com/tangjianfang/claudecode-statusline
+
+Off by default everywhere; toggleable per project (by current working
+directory). State lives at <project>/.claude/loop-state.json.
+
+USAGE (in any project directory):
+  loopctl on   --max 8 --push                enable the loop for this project (auto-commit + push each round)
+  loopctl off                                 disable the loop for this project
+  loopctl status                              show current loop state for this project
+  loopctl presets                             list built-in --preset prompt templates
+
+FLAGS for \`on\`:
+  --max N              max auto-continue rounds (default 8; Claude Code force-releases after 8 without progress — raise CLAUDE_CODE_STOP_HOOK_BLOCK_CAP for higher)
+  --push / --no-push   git add -A && commit && push each round (default off; pushes current branch including main)
+  --preset <name>      use a built-in prompt template (see \`loopctl presets\`)
+  --prompt "..."       custom per-round prompt (overrides --preset, last-parsed wins)
+
+INSTALL:
+  loopctl --install     install as a global tool + register a Stop hook (~/.claude/hooks.Stop)
+
+OTHER:
+  loopctl --help | -H   show this help
+
+DOCS:  https://github.com/tangjianfang/claudecode-statusline#auto-continue-loop-loopctl`);
 }
 
 const args = process.argv.slice(2);
+
+// --help / -H / help: print the full command reference. Auto-shows when
+// invoked with no args too, so the user doesn't have to remember the flag.
+if (args.length === 0 || args.includes('--help') || args.includes('-H') || args[0] === 'help') {
+  printHelp();
+  return;
+}
 
 if (args.includes('--install')) {
   install().catch(err => {
@@ -319,5 +345,5 @@ if (args.includes('--install')) {
 } else if (args[0] === 'presets') {
   cmdPresets();
 } else {
-  printUsage();
+  printHelp();
 }
