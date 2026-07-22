@@ -1,13 +1,23 @@
 {
   "name": "cc-statusline",
   "version": "1.0.0",
-  "description": "Custom status line for Claude Code: shows model, output TPS, token/cost totals, git branch and context usage",
+  "description": "Custom status line for Claude Code: shows model, output TPS, token/cost totals, git branch and context usage, plus an opt-in auto-continue loop and a pricing updater",
   "main": "statusline.js",
   "bin": {
     "cc-statusline": "statusline.js",
     "loopctl": "loopctl.js",
     "pricing-updater": "pricing-updater.js"
   },
+  "files": [
+    "statusline.js",
+    "loopctl.js",
+    "pricing-updater.js",
+    "pricing.json",
+    "install.bat",
+    "install-loopctl.bat",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "check": "node --check statusline.js && node --check loopctl.js && node --check pricing-updater.js",
     "install": "node statusline.js --install && node loopctl.js --install",
@@ -19,9 +29,29 @@
     "demo": "node -e \"process.stdout.write('{}')\" | node statusline.js",
     "demo:subagent": "node -e \"process.stdout.write(JSON.stringify({tasks:[{id:'t1',name:'Explore',tokenCount:100,startTime:'2026-01-01T00:00:00Z'}]}))\" | node statusline.js"
   },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "anthropic",
+    "statusline",
+    "status-line",
+    "cli",
+    "terminal",
+    "cost",
+    "tokens"
+  ],
   "engines": {
     "node": ">=16"
   },
   "license": "MIT",
+  "author": "cc-statusline contributors",
+  "homepage": "https://github.com/tangjianfang/CCStatusLine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tangjianfang/CCStatusLine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tangjianfang/CCStatusLine/issues"
+  },
   "private": true
 }

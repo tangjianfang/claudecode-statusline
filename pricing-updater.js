@@ -18,10 +18,12 @@
 // pricing.json, so renders stay fast and never block on a fetch.
 //
 // Usage:
-//   node pricing-updater.js                 fetch all mainstream providers' canonical chat models, merge into pricing.json
+//   node pricing-updater.js                 fetch all mainstream providers' canonical chat models, merge into ~/.claude/pricing.json
 //   node pricing-updater.js --model KEY     also include a specific litellm key (repeatable)
 //   node pricing-updater.js --list [pat]    print matching litellm keys + rates, write nothing
-//   node pricing-updater.js --overwrite     replace pricing.json entirely instead of merging
+//   node pricing-updater.js --overwrite     replace the target file entirely instead of merging
+//   node pricing-updater.js --out PATH     write to PATH instead of ~/.claude/pricing.json
+//                                           (maintainer: --out pricing.json refreshes the repo's shipped copy)
 //   node pricing-updater.js --source URL    use a different source URL
 
 const fs = require('fs');
@@ -157,10 +159,10 @@ function fetchJson(url) {
   });
 }
 
-function readExisting() {
+function readExisting(file) {
   try {
-    if (!fs.existsSync(PRICING_FILE)) return {};
-    const obj = JSON.parse(fs.readFileSync(PRICING_FILE, 'utf8'));
+    if (!fs.existsSync(file)) return {};
+    const obj = JSON.parse(fs.readFileSync(file, 'utf8'));
     return obj && typeof obj === 'object' ? obj : {};
   } catch {
     return {};
@@ -177,6 +179,7 @@ async function main() {
   let listPattern = null;
   let overwrite = false;
   let sourceUrl = SOURCE_URL;
+  let outFile = PRICING_FILE; // default: the user's installed copy
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -184,12 +187,15 @@ async function main() {
     else if (a === '--list') listPattern = args[++i] || '';
     else if (a === '--overwrite') overwrite = true;
     else if (a === '--source') sourceUrl = args[++i];
+    else if (a === '--out') outFile = args[++i];
     else if (a === '--help' || a === '-h') {
       console.log(`Usage:
   pricing-updater.js                 fetch all mainstream providers' canonical chat models, merge into ~/.claude/pricing.json
   pricing-updater.js --model KEY     also include a specific litellm key (repeatable)
   pricing-updater.js --list [pat]    print matching litellm keys + rates, write nothing
-  pricing-updater.js --overwrite     replace pricing.json entirely instead of merging
+  pricing-updater.js --overwrite     replace the target file entirely instead of merging
+  pricing-updater.js --out PATH     write to PATH instead of ~/.claude/pricing.json
+                                    (maintainer: use --out pricing.json to refresh the repo's shipped copy)
   pricing-updater.js --source URL    use a different source URL
 
 Run manually whenever you want fresh rates. The status line picks up changes on
@@ -243,13 +249,13 @@ overwriting rates in the background is risky.)`);
     report.push(`  + ${fk}  ${formatEntry(fetched[fk])}  src=${e.source || '?'}`);
   }
 
-  const existing = overwrite ? {} : readExisting();
+  const existing = overwrite ? {} : readExisting(outFile);
   const merged = { ...existing, ...fetched };
 
-  fs.mkdirSync(path.dirname(PRICING_FILE), { recursive: true });
-  fs.writeFileSync(PRICING_FILE, JSON.stringify(merged, null, 2) + '\n', 'utf8');
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  fs.writeFileSync(outFile, JSON.stringify(merged, null, 2) + '\n', 'utf8');
 
-  console.log(`\n${overwrite ? 'Wrote' : 'Merged into'} ${PRICING_FILE} (${Object.keys(merged).length} entries):`);
+  console.log(`\n${overwrite ? 'Wrote' : 'Merged into'} ${outFile} (${Object.keys(merged).length} entries):`);
   console.log(report.join('\n'));
   console.log(`\nDone. The status line picks this up on its next render.`);
 }

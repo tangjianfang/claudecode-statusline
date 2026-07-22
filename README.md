@@ -154,11 +154,11 @@ cost = freshInput/1M × p.in
      + cacheCreate/1M × p.cacheWrite
 ```
 
-where `p` is a per-model pricing entry (USD per 1M tokens) looked up from a `PRICING` table. The four token totals are accumulated session-wide while parsing the transcript (the same pass that produces `Σ↓`/`↑` and `cache:`).
+where `p` is a per-model pricing entry (USD per 1M tokens) looked up from a `pricing.json` table. The four token totals are accumulated session-wide while parsing the transcript (the same pass that produces `Σ↓`/`↑` and `cache:`).
 
 **Why self-compute:** Claude Code's `data.cost.total_cost_usd` is priced at Anthropic's rates, which is wrong when you route to a third-party model via `ANTHROPIC_BASE_URL` (e.g. MiniMax). Computing from your own rate table makes the figure match what you actually pay.
 
-**Adding your model's rates:** create `~/.claude/pricing.json` with the same shape as the `PRICING` constant; it's merged on top of the built-in table at startup:
+**The pricing file:** the table lives in `pricing.json` — one file, the single source of truth. The repo ships a curated copy covering the canonical chat models of every mainstream provider (Anthropic, OpenAI, Google/Gemini, MiniMax, DeepSeek, Meta/Llama, Mistral, xAI/Grok, Cohere, Alibaba/Qwen) with all their versions. `statusline.js` reads the `pricing.json` that sits next to it; `--install` seeds `~/.claude/pricing.json` from that shipped copy (only if you don't already have one — it never overwrites your copy). So cost estimation works out of the box, and you can refresh or hand-edit the file anytime. Shape:
 
 ```json
 {
@@ -166,7 +166,7 @@ where `p` is a per-model pricing entry (USD per 1M tokens) looked up from a `PRI
 }
 ```
 
-Keys match first by exact model name, then by longest case-insensitive substring (so `claude-sonnet-5-20250514` matches `claude-sonnet-5`). When no entry matches the current model, the script falls back to `data.cost.total_cost_usd` and labels it `~cost?:` to flag that it's the untrusted client estimate rather than a self-computed figure. The built-in table ships with a few Anthropic models; verify their rates at <https://www.anthropic.com/pricing> and adjust as needed.
+Keys match first by exact model name, then by longest case-insensitive substring (so `claude-sonnet-5-20250514` matches `claude-sonnet-5`). When no entry matches the current model, the script falls back to `data.cost.total_cost_usd` and labels it `~cost?:` to flag that it's the untrusted client estimate rather than a self-computed figure. To add or fix a rate, just edit `~/.claude/pricing.json` (or the repo's `pricing.json` if you're maintaining this project) — the status line picks it up on the next render.
 
 ### Refreshing rates manually
 
@@ -176,10 +176,13 @@ Keys match first by exact model name, then by longest case-insensitive substring
 node pricing-updater.js                 # fetch all mainstream providers, merge into ~/.claude/pricing.json
 node pricing-updater.js --model KEY     # also include a specific litellm key (repeatable)
 node pricing-updater.js --list minimax  # print matching keys + rates, write nothing
-node pricing-updater.js --overwrite     # replace pricing.json entirely instead of merging
+node pricing-updater.js --overwrite     # replace the target file entirely instead of merging
+node pricing-updater.js --out pricing.json --overwrite   # maintainer: refresh the repo's shipped copy
 ```
 
 Run it manually whenever you want fresh rates — the status line picks up the new `pricing.json` on its next render. There is **no scheduled task and no auto-update**: updating pricing is an explicit, user-initiated action, since silently rewriting rate data in the background (with the network and trust risks that entails) is not something this tool does for you.
+
+**Maintaining this repo's `pricing.json`:** the shipped `pricing.json` is just a snapshot — refresh it with `node pricing-updater.js --out pricing.json --overwrite`, eyeball the diff, commit, and users get the new rates on their next `--install` (new installs are seeded from it; existing installs keep whatever the user has, since `--install` never overwrites their copy).
 
 ## Known limitations
 

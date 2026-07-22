@@ -48,28 +48,24 @@ function formatCost(value) {
 // value is Claude Code's client-side estimate priced at Anthropic's rates —
 // wrong when you route to a third-party model (e.g. MiniMax via
 // ANTHROPIC_BASE_URL). Instead we compute cost ourselves from the token counts
-// already parsed from the transcript, using this public, editable pricing table.
+// already parsed from the transcript, using a public, editable pricing table.
 //
-// All rates are USD per 1,000,000 tokens. Override or extend per-model by
-// creating ~/.claude/pricing.json with the same shape (merged on top of this
-// table at startup). Keys match first by exact name, then by longest
-// case-insensitive substring (so "claude-sonnet-5-20250514" matches
-// "claude-sonnet-5"). When no entry matches the current model, cost falls
-// back to data.cost.total_cost_usd and is labeled "~cost?:" to flag that it's
-// the untrusted client estimate rather than a self-computed figure.
-const PRICING = {
-  // Anthropic official models — verify rates at https://www.anthropic.com/pricing
-  // or run `node pricing-updater.js` to refresh from the litellm price table.
-  'claude-opus-4-8':  { in: 5,    out: 25,  cacheRead: 0.5,  cacheWrite: 6.25 },
-  'claude-sonnet-5':  { in: 2,    out: 10,  cacheRead: 0.2,  cacheWrite: 2.5 },
-  'claude-haiku-4-5': { in: 1,    out: 5,   cacheRead: 0.1,  cacheWrite: 1.25 },
-};
+// The table lives in `pricing.json` next to this script (one file, the single
+// source of truth — maintained in the repo, shipped to users). All rates are
+// USD per 1,000,000 tokens, shape: { "<model>": { in, out, cacheRead, cacheWrite } }.
+// Keys match first by exact name, then by longest case-insensitive substring
+// (so "claude-sonnet-5-20250514" matches "claude-sonnet-5"). When no entry
+// matches the current model, cost falls back to data.cost.total_cost_usd and is
+// labeled "~cost?:" to flag that it's the untrusted client estimate rather than
+// a self-computed figure. Refresh the file with `node pricing-updater.js`.
 
-// Load user overrides from ~/.claude/pricing.json (same shape as PRICING),
-// merged on top of the built-in table. Best-effort: missing/invalid file → {}.
-function loadPricingOverrides() {
+// Load the pricing table from pricing.json next to this script. After
+// `--install` that's ~/.claude/pricing.json; run from the repo it's the repo's
+// ./pricing.json. Best-effort: missing/invalid file → {} (cost falls back to
+// the client estimate). Never writes — pricing-updater.js owns updates.
+function loadPricing() {
   try {
-    const file = path.join(os.homedir(), '.claude', 'pricing.json');
+    const file = path.join(__dirname, 'pricing.json');
     if (!fs.existsSync(file)) return {};
     const obj = JSON.parse(fs.readFileSync(file, 'utf8'));
     return obj && typeof obj === 'object' ? obj : {};
@@ -81,8 +77,7 @@ function loadPricingOverrides() {
 // Resolve a pricing entry for a model name: exact match → longest substring
 // match → null (no entry). The longest-match rule prevents a short key from
 // shadowing a more specific one when several keys match.
-function resolvePricing(model, overrides) {
-  const table = { ...PRICING, ...overrides };
+function resolvePricing(model, table) {
   if (!model) return null;
   if (table[model]) return table[model];
   const lower = model.toLowerCase();
@@ -177,6 +172,17 @@ async function installStatusLine() {
   if (copyScript) {
     fs.writeFileSync(targetScript, sourceContent);
     console.log(`Installed statusline.js to ${targetScript}`);
+  }
+
+  // Seed ~/.claude/pricing.json from the bundled pricing.json (sits next to
+  // this script) so cost estimation works out of the box. Only seed when the
+  // target doesn't exist — never overwrite, since the user may have refreshed
+  // their copy with `pricing-updater.js` or hand-edited rates.
+  const bundledPricing = path.join(__dirname, 'pricing.json');
+  const targetPricing = path.join(claudeDir, 'pricing.json');
+  if (bundledPricing !== targetPricing && fs.existsSync(bundledPricing) && !fs.existsSync(targetPricing)) {
+    fs.copyFileSync(bundledPricing, targetPricing);
+    console.log(`Seeded ${targetPricing} (run 'pricing-updater' anytime to refresh rates)`);
   }
 
   const commandPath = targetScript.split(path.sep).join('/');
@@ -500,13 +506,13 @@ process.stdin.on('end', () => {
   }
 
   // Cost: prefer a transparent self-computed figure from transcript token
-  // counts + the public PRICING table (labeled "~cost:"). Fall back to the
+  // counts + the public pricing.json table (labeled "~cost:"). Fall back to the
   // client estimate in data.cost.total_cost_usd (labeled "~cost?:") when we
   // have no token data or no pricing entry for the current model. Both are
   // estimates — hence the "~" prefix — but the self-computed one is priced at
-  // the rates you control in ~/.claude/pricing.json, so it matches what you
-  // actually pay when routed to a third-party model.
-  const pricing = resolvePricing(model, loadPricingOverrides());
+  // the rates you control in pricing.json, so it matches what you actually pay
+  // when routed to a third-party model.
+  const pricing = resolvePricing(model, loadPricing());
   const selfCost = sawUsage && pricing
     ? computeCost(pricing, sessionFreshInput, sessionOutput, sessionCacheRead, sessionCacheCreate)
     : null;
