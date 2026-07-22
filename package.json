@@ -45,13 +45,12 @@
   },
   "license": "MIT",
   "author": "cc-statusline contributors",
-  "homepage": "https://github.com/tangjianfang/CCStatusLine#readme",
+  "homepage": "https://github.com/tangjianfang/cc-statusline#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tangjianfang/CCStatusLine.git"
+    "url": "git+https://github.com/tangjianfang/cc-statusline.git"
   },
   "bugs": {
-    "url": "https://github.com/tangjianfang/CCStatusLine/issues"
-  },
-  "private": true
+    "url": "https://github.com/tangjianfang/cc-statusline/issues"
+  }
 }
