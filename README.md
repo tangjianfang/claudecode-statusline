@@ -25,6 +25,18 @@ Explore running 266.7tok/s tok:1.2k(1%) eff:high
 
 Claude Code's stdin JSON for the status line does not include token/timing data, so the script reads the JSONL transcript file pointed to by `transcript_path`, parsing the `usage` field of each assistant message line by line to compute TPS and cumulative totals. Subagent row speed comes from the task's own `tokenSamples` / `tokenCount` + `startTime` (`tokenSamples` is not officially documented, so the script parses it defensively and falls back to a coarse `tokenCount / elapsed-time` estimate when it can't extract usable samples).
 
+## Install
+
+```bash
+# From npm (installs cc-statusline, loopctl, pricing-updater as global commands)
+npm install -g @tangjianfang/claudecode-statusline
+
+# Or from GitHub
+git clone https://github.com/tangjianfang/claudecode-statusline.git
+```
+
+After installing from npm, the three global commands (`cc-statusline`, `loopctl`, `pricing-updater`) are ready to use. The status line and loopctl still need to be wired into Claude Code's settings — see [Installing the status line](#installing-the-status-line) and [Install](#install-1) (loopctl) below. A pre-npm-published, identical package is also available under the shorter name `@tangjianfang/cc-statusline`.
+
 ## Installing the status line
 
 ```bash
