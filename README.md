@@ -68,6 +68,13 @@ node loopctl.js --install
 
 Each `--install` runs the same y/n prompts as before — handy if you want to keep an existing file or setting.
 
+After installing, verify the wiring with:
+
+```bash
+cc-statusline status    # shows ~/.claude files, settings.json contents, pricing.json entry count
+loopctl status           # shows loop state for the current project
+```
+
 ### Cost estimation
 
 The `~cost:` figure is computed by the script itself from the transcript's token counts (split into fresh input / output / cache-read / cache-creation, accumulated session-wide), times a per-model pricing table that lives in `pricing.json`:

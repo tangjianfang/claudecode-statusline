@@ -252,12 +252,76 @@ async function installStatusLine() {
   }
 }
 
+// Diagnostic: report the current install state of the status line + loopctl +
+// pricing.json. Mirrors `loopctl status` so users have one place to check
+// whether `npm install -g` actually wired everything up — useful when the
+// postinstall silently fails (read-only ~/.claude, locked settings.json, etc.).
+function cmdStatus() {
+  const home = os.homedir();
+  const claudeDir = path.join(home, '.claude');
+  const slPath = path.join(claudeDir, 'statusline.js');
+  const lcPath = path.join(claudeDir, 'loopctl.js');
+  const settingsPath = path.join(claudeDir, 'settings.json');
+  const pricingPath = path.join(claudeDir, 'pricing.json');
+
+  const exists = p => {
+    try { return fs.statSync(p); } catch { return null; }
+  };
+
+  const fileLine = (label, p) => {
+    const st = exists(p);
+    if (!st) return `  ${label.padEnd(28)} NOT FOUND (${p})`;
+    const mtime = st.mtime.toISOString().replace('T', ' ').slice(0, 19);
+    return `  ${label.padEnd(28)} ${st.size}B  mtime=${mtime}`;
+  };
+
+  console.log('cc-statusline install state:');
+  console.log(fileLine('~/.claude/statusline.js', slPath));
+  console.log(fileLine('~/.claude/loopctl.js',     lcPath));
+  console.log(fileLine('~/.claude/settings.json',  settingsPath));
+  console.log(fileLine('~/.claude/pricing.json',   pricingPath));
+
+  // settings.json content checks
+  let settings = null;
+  try {
+    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  } catch {
+    console.log('\n  settings.json: COULD NOT PARSE');
+  }
+  if (settings) {
+    const sl = settings.statusLine && settings.statusLine.command;
+    const sub = settings.subagentStatusLine && settings.subagentStatusLine.command;
+    const stop = (settings.hooks && settings.hooks.Stop) || [];
+    const hasLoopctl = stop.some(g => Array.isArray(g.hooks) && g.hooks.some(h => h.command && h.command.includes('loopctl.js')));
+    console.log('\n  settings.json contents:');
+    console.log(`    statusLine:           ${sl ? 'registered → ' + sl : 'NOT REGISTERED'}`);
+    console.log(`    subagentStatusLine:   ${sub ? 'registered → ' + sub : 'NOT REGISTERED'}`);
+    console.log(`    hooks.Stop (loopctl): ${hasLoopctl ? 'registered' : 'NOT REGISTERED'}`);
+  }
+
+  // pricing.json entry count
+  const pricing = exists(pricingPath);
+  if (pricing) {
+    try {
+      const p = JSON.parse(fs.readFileSync(pricingPath, 'utf8'));
+      console.log(`\n  pricing.json: ${Object.keys(p).length} entries`);
+    } catch {
+      console.log('\n  pricing.json: COULD NOT PARSE');
+    }
+  }
+}
+
 if (process.argv.includes('--install')) {
   installStatusLine()
     .catch(err => {
       console.error('Install failed:', err.message);
       process.exitCode = 1;
     });
+  return;
+}
+
+if (process.argv[2] === 'status') {
+  cmdStatus();
   return;
 }
 
