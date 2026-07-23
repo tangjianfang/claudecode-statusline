@@ -17,7 +17,8 @@
     "install.bat",
     "install-loopctl.bat",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/"
   ],
   "scripts": {
     "check": "node --check statusline.js && node --check loopctl.js && node --check pricing-updater.js && node --check scripts/postinstall.js",

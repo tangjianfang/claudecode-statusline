@@ -37,6 +37,12 @@ Explore  running  166.7tok/s  tok:50k(25%)  5m00s  ~$0.01  eff:high
 fix-bug completed 400.0tok/s  tok:120k(60%) 5m00s  ~$0.04  eff:medium
 ```
 
+### Screenshot
+
+Real example while running in Claude Code — the status line (model, project, branch, loop badge, context %, TPS, tokens, cost, duration, rate limits, reasoning effort) plus one row per active subagent, all live:
+
+![cc-statusline running in Claude Code with multiple subagents](docs/cc-statusline-preview.png)
+
 Each subagent row shows its name, status, recent throughput (`tok/s`), context usage with percent of window, how long it's been running, an approximate cost (when `ANTHROPIC_MODEL` is set so the script can look up pricing — see [Cost estimation](#cost-estimation)), and reasoning effort. The cost figure is approximate since subagent payloads don't break down input vs output tokens; the `~$` prefix flags it.
 
 ## Auto-continue loop (loopctl)
