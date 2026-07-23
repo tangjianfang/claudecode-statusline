@@ -28,7 +28,7 @@
     "pricing:list": "node pricing-updater.js --list",
     "presets": "node loopctl.js presets",
     "demo": "node -e \"process.stdout.write('{}')\" | node statusline.js",
-    "demo:subagent": "node -e \"process.stdout.write(JSON.stringify({tasks:[{id:'t1',name:'Explore',tokenCount:100,startTime:'2026-01-01T00:00:00Z'}]}))\" | node statusline.js",
+    "demo:subagent": "node -e \"const s=new Date(Date.now()-5*60*1000).toISOString();process.stdout.write(JSON.stringify({tasks:[{id:'t1',name:'Explore',type:'Explore',status:'running',tokenCount:50000,contextWindowSize:200000,startTime:s,effort:'high'},{id:'t2',name:'fix-bug',type:'general-purpose',status:'completed',tokenCount:120000,contextWindowSize:200000,startTime:s,effort:'medium'}]}))\" | node statusline.js",
     "postinstall": "node scripts/postinstall.js"
   },
   "keywords": [

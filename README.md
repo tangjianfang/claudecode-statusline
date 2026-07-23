@@ -33,8 +33,11 @@ TPS:38.2 out:1.2k cache:15k Σ↓120k ↑8.4k +120/-15 ~cost:$0.31 dur:2m 14s 5h
 The branch name is a clickable link to that branch's page on the remote (GitHub / GitLab / Bitbucket) when the `origin` resolves; on other hosts it stays plain text. Subagent rows render like:
 
 ```
-Explore running 266.7tok/s tok:1.2k(1%) eff:high
+Explore  running  166.7tok/s  tok:50k(25%)  5m00s  ~$0.01  eff:high
+fix-bug completed 400.0tok/s  tok:120k(60%) 5m00s  ~$0.04  eff:medium
 ```
+
+Each subagent row shows its name, status, recent throughput (`tok/s`), context usage with percent of window, how long it's been running, an approximate cost (when `ANTHROPIC_MODEL` is set so the script can look up pricing — see [Cost estimation](#cost-estimation)), and reasoning effort. The cost figure is approximate since subagent payloads don't break down input vs output tokens; the `~$` prefix flags it.
 
 ## Auto-continue loop (loopctl)
 

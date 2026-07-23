@@ -39,6 +39,20 @@ function formatDuration(ms) {
   return `${minutes}m ${seconds}s`;
 }
 
+// Same as formatDuration but without the space, for tight inline layouts
+// (subagent rows). "1m23s" instead of "1m 23s" — the space would split
+// visually when joined with the rest of the row tokens.
+function formatDurationCompact(ms) {
+  const totalSeconds = Math.max(0, Math.floor((ms || 0) / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return `${minutes}m${seconds.toString().padStart(2, '0')}s`;
+  const hours = Math.floor(minutes / 60);
+  const remMins = minutes % 60;
+  return `${hours}h${remMins}m`;
+}
+
 function formatCost(value) {
   return `$${Number(value || 0).toFixed(2)}`;
 }
@@ -469,18 +483,32 @@ function renderSubagentStatusLine(data) {
   const now = Date.now();
   const lines = [];
 
+  // Cost lookup for subagent rows: the subagent payload itself doesn't carry
+  // model info (it only has {columns, tasks:[...]}), so we fall back to
+  // ANTHROPIC_MODEL — the same env var the main path uses as a fallback.
+  // Cost is approximate: tokenCount is the running context total (input +
+  // cache), not output, so we multiply by the input rate and label with "~".
+  // Skip entirely when there's no pricing entry — better to omit than guess.
+  const pricing = loadPricing();
+  const subagentModel = process.env.ANTHROPIC_MODEL || null;
+  const pricingEntry = subagentModel ? resolvePricing(subagentModel, pricing) : null;
+
   for (const task of tasks) {
     if (!task || !task.id) continue;
     const parts = [color(task.name || task.type || 'agent', ANSI.cyan)];
     if (task.status) parts.push(color(task.status, ANSI.dim));
 
-    let rate = estimateRecentRate(task.tokenSamples);
-    if (rate === null && typeof task.tokenCount === 'number' && task.startTime) {
+    // Elapsed time from startTime — reused for both the rate fallback and
+    // the visible duration field.
+    let elapsedSec = null;
+    if (task.startTime) {
       const startTs = parseTimestamp(task.startTime);
-      if (startTs) {
-        const elapsedSec = (now - startTs) / 1000;
-        if (elapsedSec > 0) rate = task.tokenCount / elapsedSec;
-      }
+      if (startTs) elapsedSec = (now - startTs) / 1000;
+    }
+
+    let rate = estimateRecentRate(task.tokenSamples);
+    if (rate === null && typeof task.tokenCount === 'number' && elapsedSec !== null && elapsedSec > 0) {
+      rate = task.tokenCount / elapsedSec;
     }
     if (rate !== null) parts.push(color(`${rate.toFixed(1)}tok/s`, ANSI.yellow));
 
@@ -491,6 +519,19 @@ function renderSubagentStatusLine(data) {
         tokenPart += `(${pct}%)`;
       }
       parts.push(color(tokenPart, ANSI.dim));
+    }
+
+    // Duration: helps catch stuck subagents (e.g. 30m on one row).
+    if (elapsedSec !== null && elapsedSec >= 1) {
+      parts.push(color(formatDurationCompact(elapsedSec * 1000), ANSI.dim));
+    }
+
+    // Approximate cost: tokenCount × pricing.in (input-equivalent). Subagent
+    // payloads don't break down input/output/cache, so this is a lower bound
+    // — output tokens would push it higher. The "~" prefix signals this.
+    if (pricingEntry && typeof task.tokenCount === 'number' && pricingEntry.in > 0) {
+      const cost = (task.tokenCount / 1e6) * pricingEntry.in;
+      if (cost >= 0.0001) parts.push(color(`~$${cost.toFixed(2)}`, ANSI.green));
     }
 
     if (task.effort) parts.push(color(`eff:${task.effort}`, ANSI.dim));
