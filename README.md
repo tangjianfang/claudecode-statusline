@@ -33,9 +33,11 @@ TPS:38.2 out:1.2k cache:15k Σ↓120k ↑8.4k +120/-15 ~cost:$0.31 dur:2m 14s 5h
 The branch name is a clickable link to that branch's page on the remote (GitHub / GitLab / Bitbucket) when the `origin` resolves; on other hosts it stays plain text. Subagent rows render like:
 
 ```
-Explore  running  166.7tok/s  tok:50k(25%)  5m00s  ~$0.01  eff:high
-fix-bug completed 400.0tok/s  tok:120k(60%) 5m00s  ~$0.04  eff:medium
+local_agent  running  Verifying soak.sh binary configuration  67.5TPS  tok:198k(20%)  out:8.7k  1h7m  ~$1.23
+Explore      running  166.7tok/s  tok:50k(25%)  5m00s  ~$0.01  eff:high
 ```
+
+The first row shows real per-agent stats: the live activity label, TPS/`tok:`/`out:`/`~$` computed from the agent's own transcript (`<project dir>/<session id>/subagents/agent-<id>.jsonl`), which works even on builds where the payload's `tokenCount` stays 0 the whole run. The second row is the fallback when no agent transcript exists — rate labeled `tok/s` (payload-derived, coarser) and cost from `tokenCount × input rate` (a lower bound). Fields with no data are omitted rather than shown as zeros.
 
 ### Screenshot
 
@@ -169,7 +171,7 @@ Claude Code pipes a JSON payload on stdin. The main-session payload has session/
 - **TPS is not real-time** — the line only re-runs when a new assistant message completes, `/compact` finishes, permission mode changes, etc. For more frequent refresh, add `"refreshInterval": 2` to the `statusLine` config in `~/.claude/settings.json`. While the main conversation is blocked waiting on subagents, the figure is stale by design (it describes the last main response); once it is over 2 minutes old it is labeled `TPS:N (Xm ago)` so a "frozen" value reads as waiting rather than broken.
 - **TPS reads low** — the denominator is "previous user/tool_result timestamp → assistant message completion", which includes network round-trips and time-to-first-token rather than pure decode time.
 - **`~cost:` is an estimate** — see [Cost estimation](#cost-estimation).
-- **Subagent `tokenSamples` is undocumented** — falls back to a coarse `tokenCount / elapsed-time` estimate and is labeled `tok/s` rather than `TPS`. Claude Code populates `tokenCount` sparsely, so a zero/absent count omits the `tok:` and rate fields instead of rendering `tok:0(0%)`. To see what Claude Code actually sends (e.g. when a row misbehaves): `touch ~/.claude/statusline-debug`, reproduce, then read `~/.claude/statusline-payloads.log` (size-capped at ~512KB). Delete the flag file to stop logging.
+- **Subagent stats come from the agent transcript when it exists** — Claude Code writes background/local agents to `<project dir>/<session id>/subagents/agent-<task id>.jsonl` with the same usage/timestamp shape as the main transcript, so per-agent TPS, context %, output total and cost are computed the same way as the main line. On builds where that file is absent, the row falls back to the payload's undocumented `tokenSamples` (labeled `tok/s`) or `tokenCount / elapsed`, and zero/absent counts omit the fields instead of rendering `tok:0(0%)` — Claude Code populates `tokenCount` sparsely (it stays 0 for whole runs on current builds, which is why the transcript fallback exists). To inspect what Claude Code actually sends: `touch ~/.claude/statusline-debug`, reproduce, then read `~/.claude/statusline-payloads.log` (size-capped at ~512KB). Delete the flag file to stop logging.
 - **Branch links support GitHub / GitLab / Bitbucket only** — self-hosted Git renders the branch as plain text rather than a guessed-wrong link.
 - **loopctl is an open-ended autonomous loop** — the round cap only prevents infinite runs; it doesn't check whether the work is actually done. Don't leave it unattended for long stretches.
 - **loopctl's `--max` is bounded by Claude Code's own Stop-hook protection** (8 by default).

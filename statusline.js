@@ -477,30 +477,100 @@ function estimateRecentRate(tokenSamples) {
   return dTokens / dt;
 }
 
+// Per-agent real stats from the agent's own transcript. Claude Code stores
+// background/local agents at <project dir>/<session id>/subagents/agent-<task
+// id>.jsonl — a subdirectory named after the session id, next to the session
+// transcript — with the same assistant/user entry shape (usage + timestamps)
+// as the main transcript, so the same TPS pairing and total accumulation
+// apply. This exists because the payload's own tokenCount/tokenSamples stay 0
+// for whole runs on current builds (verified by payload capture). Returns
+// null when there is no such file (older builds / other task kinds).
+function agentTranscriptStats(data, task) {
+  try {
+    if (!data.transcript_path || !task.id) return null;
+    const sid = data.session_id || path.basename(data.transcript_path, '.jsonl');
+    const file = path.join(path.dirname(data.transcript_path), sid, 'subagents', `agent-${task.id}.jsonl`);
+    if (!fs.existsSync(file)) return null;
+    // Cap at the last 10MB of very long runs — plenty of history for accurate
+    // totals, immune to pathological file growth.
+    const SIZE_CAP = 10 * 1024 * 1024;
+    const st = fs.statSync(file);
+    let text;
+    if (st.size > SIZE_CAP) {
+      const fd = fs.openSync(file, 'r');
+      const buf = Buffer.alloc(SIZE_CAP);
+      fs.readSync(fd, buf, 0, SIZE_CAP, st.size - SIZE_CAP);
+      fs.closeSync(fd);
+      text = buf.toString('utf8').slice(buf.toString('utf8').indexOf('\n') + 1);
+    } else {
+      text = fs.readFileSync(file, 'utf8');
+    }
+    let lastUserTs = null;
+    let last = null;
+    let totOut = 0, totIn = 0, totCacheRead = 0, totCacheCreate = 0;
+    const seen = new Set();
+    for (const line of text.split('\n')) {
+      if (!line) continue;
+      let obj;
+      try { obj = JSON.parse(line); } catch { continue; }
+      const ts = obj.timestamp ? Date.parse(obj.timestamp) : null;
+      if (obj.type === 'user' && ts) lastUserTs = ts;
+      if (obj.type === 'assistant' && obj.message && obj.message.usage &&
+          typeof obj.message.usage.output_tokens === 'number') {
+        const u = obj.message.usage;
+        last = {
+          ts,
+          out: u.output_tokens || 0,
+          spanS: lastUserTs && ts && ts > lastUserTs ? (ts - lastUserTs) / 1000 : null,
+          in: u.input_tokens || 0,
+          cacheRead: u.cache_read_input_tokens || 0,
+          cacheCreate: u.cache_creation_input_tokens || 0,
+        };
+        if (obj.message.id && !seen.has(obj.message.id)) {
+          seen.add(obj.message.id);
+          totOut += u.output_tokens || 0;
+          totIn += u.input_tokens || 0;
+          totCacheRead += u.cache_read_input_tokens || 0;
+          totCacheCreate += u.cache_creation_input_tokens || 0;
+        }
+      }
+    }
+    if (!last) return null;
+    return {
+      ctxTokens: last.in + last.cacheRead + last.cacheCreate,
+      lastTps: last.spanS && last.spanS > 0.3 ? last.out / last.spanS : null,
+      totOut, totIn, totCacheRead, totCacheCreate,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Renders the subagentStatusLine format: one NDJSON line per task,
-// {"id": "<task id>", "content": "<row body>"}. tokenCount appears to be a
-// running total (context usage), not output-only, so the rate shown here is
-// labeled "tok/s" (throughput) rather than "TPS" (generation speed) to avoid
-// implying more precision than the documented fields support.
+// {"id": "<task id>", "content": "<row body>"}. Real per-agent stats come
+// from the agent transcript (see agentTranscriptStats) when available;
+// otherwise the payload's own tokenCount/tokenSamples are used (labeled
+// "tok/s" — a coarser throughput figure — rather than transcript-derived
+// "TPS").
 function renderSubagentStatusLine(data) {
   const tasks = Array.isArray(data.tasks) ? data.tasks : [];
   const now = Date.now();
   const lines = [];
 
-  // Cost lookup for subagent rows: the subagent payload itself doesn't carry
-  // model info (it only has {columns, tasks:[...]}), so we fall back to
-  // ANTHROPIC_MODEL — the same env var the main path uses as a fallback.
-  // Cost is approximate: tokenCount is the running context total (input +
-  // cache), not output, so we multiply by the input rate and label with "~".
-  // Skip entirely when there's no pricing entry — better to omit than guess.
   const pricing = loadPricing();
-  const subagentModel = process.env.ANTHROPIC_MODEL || null;
-  const pricingEntry = subagentModel ? resolvePricing(subagentModel, pricing) : null;
 
   for (const task of tasks) {
     if (!task || !task.id) continue;
     const parts = [color(task.name || task.type || 'agent', ANSI.cyan)];
     if (task.status) parts.push(color(task.status, ANSI.dim));
+
+    // Live activity label — updates every refresh tick, and on builds where
+    // tokenCount stays 0 it is the strongest "is it alive" signal.
+    const activity = task.label || task.description || '';
+    if (activity) {
+      const shown = activity.length > 48 ? activity.slice(0, 47) + '…' : activity;
+      parts.push(color(shown, ANSI.dim));
+    }
 
     // Elapsed time from startTime — reused for both the rate fallback and
     // the visible duration field.
@@ -510,41 +580,61 @@ function renderSubagentStatusLine(data) {
       if (startTs) elapsedSec = (now - startTs) / 1000;
     }
 
-    let rate = estimateRecentRate(task.tokenSamples);
-    if (rate === null && typeof task.tokenCount === 'number' && elapsedSec !== null && elapsedSec > 0) {
-      rate = task.tokenCount / elapsedSec;
+    const stats = agentTranscriptStats(data, task);
+
+    let rate = null;
+    if (stats && stats.lastTps !== null && stats.lastTps > 0 && stats.lastTps < 5000) {
+      rate = stats.lastTps;
+    } else {
+      rate = estimateRecentRate(task.tokenSamples);
+      if (rate === null && typeof task.tokenCount === 'number' && elapsedSec !== null && elapsedSec > 0) {
+        rate = task.tokenCount / elapsedSec;
+      }
+      // Hide zero/absurd rates instead of showing "0.0tok/s": a zero here
+      // means "no tokens reported" (tokenCount is populated sparsely), an
+      // absurd value means tokenSamples didn't parse into a sane shape.
+      if (rate !== null && (rate <= 0 || rate >= 10000)) rate = null;
     }
-    // Hide zero/absurd rates instead of showing "0.0tok/s": a zero here means
-    // "no tokens reported yet" (Claude Code populates tokenCount sparsely),
-    // and an absurd value means tokenSamples didn't parse into a sane shape.
-    // Better to omit than to display a number that looks live but isn't.
-    if (rate !== null && rate > 0 && rate < 10000) {
-      parts.push(color(`${rate.toFixed(1)}tok/s`, ANSI.yellow));
+    if (rate !== null) {
+      parts.push(color(`${rate.toFixed(1)}${stats ? 'TPS' : 'tok/s'}`, ANSI.yellow));
     }
 
-    // Same rule for the token count itself: tokenCount === 0 is "not reported
-    // yet", not a real measurement — rendering "tok:0(0%)" for a whole run
-    // reads as a frozen display rather than missing data.
-    if (typeof task.tokenCount === 'number' && task.tokenCount > 0) {
-      let tokenPart = `tok:${formatTokens(task.tokenCount)}`;
+    // Token count: prefer the transcript-derived live context size; fall
+    // back to the payload's tokenCount when positive. Zero stays hidden —
+    // "tok:0(0%)" for a whole run reads as a frozen display, not missing data.
+    const tokCount = stats
+      ? stats.ctxTokens
+      : typeof task.tokenCount === 'number' && task.tokenCount > 0
+        ? task.tokenCount
+        : null;
+    if (tokCount !== null && tokCount > 0) {
+      let tokenPart = `tok:${formatTokens(tokCount)}`;
       if (typeof task.contextWindowSize === 'number' && task.contextWindowSize > 0) {
-        const pct = Math.round((task.tokenCount / task.contextWindowSize) * 100);
-        tokenPart += `(${pct}%)`;
+        tokenPart += `(${Math.round((tokCount / task.contextWindowSize) * 100)}%)`;
       }
       parts.push(color(tokenPart, ANSI.dim));
     }
+    if (stats) parts.push(color(`out:${formatTokens(stats.totOut)}`, ANSI.dim));
 
     // Duration: helps catch stuck subagents (e.g. 30m on one row).
     if (elapsedSec !== null && elapsedSec >= 1) {
       parts.push(color(formatDurationCompact(elapsedSec * 1000), ANSI.dim));
     }
 
-    // Approximate cost: tokenCount × pricing.in (input-equivalent). Subagent
-    // payloads don't break down input/output/cache, so this is a lower bound
-    // — output tokens would push it higher. The "~" prefix signals this.
-    if (pricingEntry && typeof task.tokenCount === 'number' && pricingEntry.in > 0) {
-      const cost = (task.tokenCount / 1e6) * pricingEntry.in;
-      if (cost >= 0.0001) parts.push(color(`~$${cost.toFixed(2)}`, ANSI.green));
+    // Cost: from the agent transcript's token split when available (same
+    // formula as the main line); otherwise the coarse tokenCount × input-rate
+    // approximation. The task's own model is preferred; ANTHROPIC_MODEL is
+    // the fallback for payloads without per-task model info.
+    const pricingEntry = (task.model && resolvePricing(task.model, pricing)) ||
+      (process.env.ANTHROPIC_MODEL ? resolvePricing(process.env.ANTHROPIC_MODEL, pricing) : null);
+    if (pricingEntry) {
+      let cost = null;
+      if (stats) {
+        cost = computeCost(pricingEntry, stats.totIn, stats.totOut, stats.totCacheRead, stats.totCacheCreate);
+      } else if (typeof task.tokenCount === 'number' && task.tokenCount > 0 && pricingEntry.in > 0) {
+        cost = (task.tokenCount / 1e6) * pricingEntry.in;
+      }
+      if (cost !== null && cost >= 0.0001) parts.push(color(`~$${cost.toFixed(2)}`, ANSI.green));
     }
 
     if (task.effort) parts.push(color(`eff:${task.effort}`, ANSI.dim));
