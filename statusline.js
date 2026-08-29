@@ -612,13 +612,21 @@ process.stdin.on('end', () => {
           typeof obj.message.usage.output_tokens === 'number'
         ) {
           const usage = obj.message.usage;
-          lastAssistant = {
-            outputTokens: usage.output_tokens,
-            ts,
-            startTs: lastUserTs,
-            usage,
-          };
-          // Accumulate session totals across every assistant turn. Count only
+          // Subagent (sidechain) messages ride in the same transcript file
+          // but are a different conversation: they belong on their own
+          // subagent rows, not on the main line. Keep them out of TPS /
+          // out / cache (which describe the main conversation) while still
+          // counting them in the session-wide Σ totals below.
+          if (obj.isSidechain !== true) {
+            lastAssistant = {
+              outputTokens: usage.output_tokens,
+              ts,
+              startTs: lastUserTs,
+              usage,
+            };
+          }
+          // Accumulate session totals across every assistant turn (main AND
+          // sidechain — Σ is the whole session's spend). Count only
           // newly-processed input (fresh tokens + cache writes); cache reads are
           // repeated every turn and would inflate the total meaninglessly.
           sawUsage = true;
@@ -632,8 +640,9 @@ process.stdin.on('end', () => {
           sessionCacheCreate += usage.cache_creation_input_tokens || 0;
           sessionCacheRead += usage.cache_read_input_tokens || 0;
         } else if (obj.type === 'user') {
-          // user prompt or tool_result marks the start of the next generation
-          lastUserTs = ts;
+          // user prompt or tool_result marks the start of the next generation.
+          // Sidechain user entries must not reset the main line's start time.
+          if (obj.isSidechain !== true) lastUserTs = ts;
         }
       }
 

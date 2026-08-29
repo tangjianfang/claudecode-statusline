@@ -162,7 +162,7 @@ None — only Node.js built-ins (`fs`, `path`, `os`, `readline`, `child_process`
 
 ### How the status line gets its data
 
-Claude Code pipes a JSON payload on stdin. The main-session payload has session/cost/rate-limit info but no per-message token/timing data, so the script re-parses the JSONL transcript at `data.transcript_path` line-by-line, pairing each `assistant` message's `usage.output_tokens` with the timestamp of the preceding `user` message to derive TPS and accumulate session-wide input/output totals (excluding cache-read tokens from the input sum, since those repeat every turn). For subagent rows, the per-task rate comes from `tokenSamples` (parsed defensively; falls back to `tokenCount / elapsed` when the shape is unrecognized).
+Claude Code pipes a JSON payload on stdin. The main-session payload has session/cost/rate-limit info but no per-message token/timing data, so the script re-parses the JSONL transcript at `data.transcript_path` line-by-line, pairing each `assistant` message's `usage.output_tokens` with the timestamp of the preceding `user` message to derive TPS and accumulate session-wide input/output totals (excluding cache-read tokens from the input sum, since those repeat every turn). Subagent (`isSidechain`) entries share the transcript file but are skipped for the main line's TPS/out/cache (subagent rows show their own rates) while still counting toward the session-wide Σ totals. For subagent rows, the per-task rate comes from `tokenSamples` (parsed defensively; falls back to `tokenCount / elapsed` when the shape is unrecognized).
 
 ### Known limitations
 
