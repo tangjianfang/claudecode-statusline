@@ -16,6 +16,8 @@
     "scripts/postinstall.js",
     "install.bat",
     "install-loopctl.bat",
+    "install.sh",
+    "install-loopctl.sh",
     "README.md",
     "LICENSE",
     "docs/"

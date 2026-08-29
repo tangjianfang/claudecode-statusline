@@ -209,7 +209,11 @@ async function installStatusLine() {
   }
 
   const commandPath = targetScript.split(path.sep).join('/');
-  const desiredCommand = `node "${commandPath}"`;
+  // Use the absolute path of the running Node binary, not a bare "node":
+  // Claude Code spawns statusLine commands via a non-interactive shell that
+  // may not have node on PATH (nvm/volta on macOS/Linux install node outside
+  // the system PATH), which would silently break the status line there.
+  const desiredCommand = `"${process.execPath}" "${commandPath}"`;
 
   let settings = {};
   if (fs.existsSync(settingsPath)) {

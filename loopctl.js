@@ -259,7 +259,9 @@ async function install() {
   }
 
   const commandPath = targetScript.split(path.sep).join('/');
-  const desiredCommand = `node "${commandPath}" --hook`;
+  // Absolute Node binary path for the same reason as statusline.js: the Stop
+  // hook runs from a non-interactive shell where nvm/volta node may not be on PATH.
+  const desiredCommand = `"${process.execPath}" "${commandPath}" --hook`;
 
   let settings = {};
   if (fs.existsSync(settingsPath)) {

@@ -71,8 +71,8 @@ If you'd rather skip npm (or want fine-grained control over what gets overwritte
 ```bash
 git clone https://github.com/tangjianfang/claudecode-statusline.git
 cd claudecode-statusline
-node statusline.js --install
-node loopctl.js --install
+./install.sh                  # macOS/Linux (or: node statusline.js --install)
+./install-loopctl.sh          # auto-loop  (or: node loopctl.js --install)
 ```
 
 Each `--install` runs the same y/n prompts as before — handy if you want to keep an existing file or setting.

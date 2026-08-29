@@ -16,7 +16,7 @@ There is no build/lint/test tooling in this repo. Useful commands:
 
 - Run the status line manually against sample main-session input: `echo '{}' | node statusline.js`
 - Run it against mock subagent-row input (must include a `tasks` array to trigger that code path): `echo '{"tasks":[{"id":"t1","name":"Explore","tokenCount":100,"startTime":"2026-01-01T00:00:00Z"}]}' | node statusline.js`
-- Install/update the status line as both the active `statusLine` and `subagentStatusLine`: `node statusline.js --install` (copies itself to `~/.claude/statusline.js` and updates both fields in `~/.claude/settings.json`, prompting independently before overwriting either existing file/setting) — same thing via `install.bat` on Windows or `npm run install-statusline`
+- Install/update the status line as both the active `statusLine` and `subagentStatusLine`: `node statusline.js --install` (copies itself to `~/.claude/statusline.js` and updates both fields in `~/.claude/settings.json`, prompting independently before overwriting either existing file/setting) — same thing via `install.bat` on Windows, `install.sh` on macOS/Linux, or `npm run install-statusline`
 - Install loopctl as a global tool + register its `Stop` hook: `node loopctl.js --install` (appends to `settings.json`'s `hooks.Stop` array rather than replacing it, so it coexists with other Stop hooks) — or `npm run install-loopctl`
 - Toggle the loop in the current project: `node loopctl.js on --max 8 --push`, `node loopctl.js off`, `node loopctl.js status`
 - List built-in prompt presets: `node loopctl.js presets`
