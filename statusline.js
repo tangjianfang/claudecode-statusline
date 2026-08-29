@@ -514,9 +514,18 @@ function renderSubagentStatusLine(data) {
     if (rate === null && typeof task.tokenCount === 'number' && elapsedSec !== null && elapsedSec > 0) {
       rate = task.tokenCount / elapsedSec;
     }
-    if (rate !== null) parts.push(color(`${rate.toFixed(1)}tok/s`, ANSI.yellow));
+    // Hide zero/absurd rates instead of showing "0.0tok/s": a zero here means
+    // "no tokens reported yet" (Claude Code populates tokenCount sparsely),
+    // and an absurd value means tokenSamples didn't parse into a sane shape.
+    // Better to omit than to display a number that looks live but isn't.
+    if (rate !== null && rate > 0 && rate < 10000) {
+      parts.push(color(`${rate.toFixed(1)}tok/s`, ANSI.yellow));
+    }
 
-    if (typeof task.tokenCount === 'number') {
+    // Same rule for the token count itself: tokenCount === 0 is "not reported
+    // yet", not a real measurement — rendering "tok:0(0%)" for a whole run
+    // reads as a frozen display rather than missing data.
+    if (typeof task.tokenCount === 'number' && task.tokenCount > 0) {
       let tokenPart = `tok:${formatTokens(task.tokenCount)}`;
       if (typeof task.contextWindowSize === 'number' && task.contextWindowSize > 0) {
         const pct = Math.round((task.tokenCount / task.contextWindowSize) * 100);
@@ -549,11 +558,38 @@ function renderSubagentStatusLine(data) {
 const chunks = [];
 process.stdin.on('data', d => chunks.push(d));
 process.stdin.on('end', () => {
+  const raw = Buffer.concat(chunks).toString();
   let data = {};
   try {
-    data = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+    data = JSON.parse(raw || '{}');
   } catch {
     data = {};
+  }
+
+  // Opt-in payload capture: when ~/.claude/statusline-debug exists, every
+  // render appends its raw stdin payload to ~/.claude/statusline-payloads.log
+  // (size-capped at ~512KB, oldest lines trimmed). The subagent payload's
+  // tokenCount/tokenSamples shapes are undocumented upstream, so this is the
+  // way to see real data when a row misbehaves. Delete the flag file to stop.
+  try {
+    const flag = path.join(os.homedir(), '.claude', 'statusline-debug');
+    if (fs.existsSync(flag)) {
+      const log = path.join(os.homedir(), '.claude', 'statusline-payloads.log');
+      const CAP = 512 * 1024;
+      let prev = '';
+      try {
+        prev = fs.readFileSync(log, 'utf8');
+        while (prev.length > CAP / 2 && prev.indexOf('\n') !== -1) {
+          prev = prev.slice(prev.indexOf('\n') + 1);
+        }
+      } catch {
+        /* first write */
+      }
+      const entry = { t: new Date().toISOString(), parseError: data && Object.keys(data).length === 0, payload: data, raw };
+      fs.writeFileSync(log, prev + JSON.stringify(entry) + '\n');
+    }
+  } catch {
+    /* logging must never break rendering */
   }
 
   // subagentStatusLine sends { columns, tasks: [...] } instead of the main
@@ -579,6 +615,7 @@ process.stdin.on('end', () => {
 
   let tps = null;
   let outputTokens = null;
+  let lastAssistantAgeMs = null; // age of the data behind TPS/out — stale while the main line waits
   let cacheRead = null;       // cache_read_input_tokens of the last response
   let sessionInput = 0;       // session-wide input tokens (incl. cache) — for Σ↓ display
   let sessionOutput = 0;      // session-wide output tokens
@@ -648,6 +685,7 @@ process.stdin.on('end', () => {
 
       if (lastAssistant) {
         outputTokens = lastAssistant.outputTokens;
+        if (lastAssistant.ts) lastAssistantAgeMs = Date.now() - lastAssistant.ts;
         if (typeof lastAssistant.usage.cache_read_input_tokens === 'number') {
           cacheRead = lastAssistant.usage.cache_read_input_tokens;
         }
@@ -718,7 +756,18 @@ process.stdin.on('end', () => {
   // speed → last response → cache → session totals → lines changed → cost →
   // duration → rate limits → mode flags (fast/thinking/effort/vim).
   const secondLineParts = [];
-  if (tps !== null) secondLineParts.push(color(`TPS:${tps}`, ANSI.yellow));
+  if (tps !== null) {
+    // While the main conversation is idle (e.g. blocked waiting on subagents),
+    // this figure is stale by design — it describes the LAST main response,
+    // which does not change until the main conversation continues. Mark its
+    // age once it's over 2 minutes old so "frozen" reads as "waiting on old
+    // data" rather than a broken display.
+    const ageLabel =
+      lastAssistantAgeMs !== null && lastAssistantAgeMs > 120000
+        ? ` (${formatDurationCompact(lastAssistantAgeMs)} ago)`
+        : '';
+    secondLineParts.push(color(`TPS:${tps}${ageLabel}`, ANSI.yellow));
+  }
   if (outputTokens !== null) secondLineParts.push(color(`out:${formatTokens(outputTokens)}`, ANSI.dim));
   if (cacheRead !== null && cacheRead > 0) {
     secondLineParts.push(color(`cache:${formatTokens(cacheRead)}`, ANSI.green));

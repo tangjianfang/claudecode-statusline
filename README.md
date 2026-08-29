@@ -166,10 +166,10 @@ Claude Code pipes a JSON payload on stdin. The main-session payload has session/
 
 ### Known limitations
 
-- **TPS is not real-time** — the line only re-runs when a new assistant message completes, `/compact` finishes, permission mode changes, etc. For more frequent refresh, add `"refreshInterval": 2` to the `statusLine` config in `~/.claude/settings.json`.
+- **TPS is not real-time** — the line only re-runs when a new assistant message completes, `/compact` finishes, permission mode changes, etc. For more frequent refresh, add `"refreshInterval": 2` to the `statusLine` config in `~/.claude/settings.json`. While the main conversation is blocked waiting on subagents, the figure is stale by design (it describes the last main response); once it is over 2 minutes old it is labeled `TPS:N (Xm ago)` so a "frozen" value reads as waiting rather than broken.
 - **TPS reads low** — the denominator is "previous user/tool_result timestamp → assistant message completion", which includes network round-trips and time-to-first-token rather than pure decode time.
 - **`~cost:` is an estimate** — see [Cost estimation](#cost-estimation).
-- **Subagent `tokenSamples` is undocumented** — falls back to a coarse `tokenCount / elapsed-time` estimate and is labeled `tok/s` rather than `TPS`.
+- **Subagent `tokenSamples` is undocumented** — falls back to a coarse `tokenCount / elapsed-time` estimate and is labeled `tok/s` rather than `TPS`. Claude Code populates `tokenCount` sparsely, so a zero/absent count omits the `tok:` and rate fields instead of rendering `tok:0(0%)`. To see what Claude Code actually sends (e.g. when a row misbehaves): `touch ~/.claude/statusline-debug`, reproduce, then read `~/.claude/statusline-payloads.log` (size-capped at ~512KB). Delete the flag file to stop logging.
 - **Branch links support GitHub / GitLab / Bitbucket only** — self-hosted Git renders the branch as plain text rather than a guessed-wrong link.
 - **loopctl is an open-ended autonomous loop** — the round cap only prevents infinite runs; it doesn't check whether the work is actually done. Don't leave it unattended for long stretches.
 - **loopctl's `--max` is bounded by Claude Code's own Stop-hook protection** (8 by default).
