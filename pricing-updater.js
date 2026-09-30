@@ -74,7 +74,9 @@ function friendlyKey(litellmKey) {
 //                  vertex_ai-language-models (gemini-*), deepseek (deepseek-*),
 //                  cohere (command*)
 //   - prefixed   : minimax/MiniMax-*, meta_llama/Llama-*, mistral/*,
-//                  xai/grok-*, dashscope/qwen-*
+//                  xai/grok-*, dashscope/qwen-*, zai/glm-* (Z.ai, official
+//                  docs.z.ai pricing — covers the GLM family many users route
+//                  to via ANTHROPIC_BASE_URL), moonshot/kimi-* (Moonshot Kimi)
 // DeepSeek is a special case: it has BOTH bare (deepseek-chat) and deepseek/ keys;
 // we take the bare form and exclude deepseek/ via the prefix list, so the friendly
 // key "deepseek-chat" resolves to one entry.
@@ -89,6 +91,8 @@ const MAINSTREAM_PROVIDERS = new Set([
   'xai',
   'cohere',
   'dashscope', // Alibaba Qwen direct
+  'zai',       // Z.ai GLM direct (official docs.z.ai pricing)
+  'moonshot',  // Moonshot Kimi direct
 ]);
 // Single-slash prefixes that are themselves canonical (not hoster/region variants).
 const CANONICAL_PREFIXES = [
@@ -97,6 +101,8 @@ const CANONICAL_PREFIXES = [
   'mistral/',
   'xai/',
   'dashscope/',
+  'zai/',
+  'moonshot/',
 ];
 
 // A key is canonical if it is bare (no '/'), or has exactly one '/' and that slash
@@ -217,12 +223,9 @@ async function main() {
     }
   }
 
-  // No args + no recognized command → show help (so `pricing-updater` with
-  // nothing else prints the full reference, like the other tools do).
-  if (args.length === 0) {
-    printUpdaterHelp();
-    return;
-  }
+  // No args = the documented default: fetch mainstream providers and merge
+  // into the target file (README + `npm run update-pricing` promise this).
+  // --help / -H above shows the full reference instead.
 
   console.log(`Fetching pricing from ${sourceUrl} ...`);
   let table;

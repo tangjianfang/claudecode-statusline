@@ -1,35 +1,28 @@
 {
   "name": "@tangjianfang/claudecode-statusline",
-  "version": "1.1.0",
-  "description": "Custom status line for Claude Code: shows model, output TPS, token/cost totals, git branch and context usage, plus an opt-in auto-continue loop and a pricing updater",
+  "version": "2.0.0",
+  "description": "Custom status line for Claude Code: shows model, output TPS, token/cost totals, git branch, context usage and prompt-cache health, plus a pricing updater",
   "main": "statusline.js",
   "bin": {
     "cc-statusline": "statusline.js",
-    "loopctl": "loopctl.js",
     "pricing-updater": "pricing-updater.js"
   },
   "files": [
     "statusline.js",
-    "loopctl.js",
     "pricing-updater.js",
     "pricing.json",
     "scripts/postinstall.js",
     "install.bat",
-    "install-loopctl.bat",
     "install.sh",
-    "install-loopctl.sh",
     "README.md",
     "LICENSE",
     "docs/"
   ],
   "scripts": {
-    "check": "node --check statusline.js && node --check loopctl.js && node --check pricing-updater.js && node --check scripts/postinstall.js",
-    "install": "node statusline.js --install && node loopctl.js --install",
-    "install-statusline": "node statusline.js --install",
-    "install-loopctl": "node loopctl.js --install",
+    "check": "node --check statusline.js && node --check pricing-updater.js && node --check scripts/postinstall.js",
+    "install": "node statusline.js --install",
     "update-pricing": "node pricing-updater.js",
     "pricing:list": "node pricing-updater.js --list",
-    "presets": "node loopctl.js presets",
     "demo": "node -e \"process.stdout.write('{}')\" | node statusline.js",
     "demo:subagent": "node -e \"const s=new Date(Date.now()-5*60*1000).toISOString();process.stdout.write(JSON.stringify({tasks:[{id:'t1',name:'Explore',type:'Explore',status:'running',tokenCount:50000,contextWindowSize:200000,startTime:s,effort:'high'},{id:'t2',name:'fix-bug',type:'general-purpose',status:'completed',tokenCount:120000,contextWindowSize:200000,startTime:s,effort:'medium'}]}))\" | node statusline.js",
     "postinstall": "node scripts/postinstall.js"
@@ -44,16 +37,13 @@
     "terminal",
     "cost",
     "tokens",
-    "auto-continue",
-    "agentic-loop",
-    "stop-hook",
-    "claude-hooks",
     "cost-tracking",
     "token-counter",
     "tps",
     "pricing",
     "litellm",
-    "rate-limit"
+    "rate-limit",
+    "prompt-cache"
   ],
   "engines": {
     "node": ">=16"
@@ -67,8 +57,5 @@
   },
   "bugs": {
     "url": "https://github.com/tangjianfang/claudecode-statusline/issues"
-  },
-  "dependencies": {
-    "@tangjianfang/cc-statusline": "^1.0.1"
   }
 }

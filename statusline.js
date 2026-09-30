@@ -53,6 +53,26 @@ function formatDurationCompact(ms) {
   return `${hours}h${remMins}m`;
 }
 
+// Compact window/token-size label without the "1.0" padding of formatTokens:
+// 1,000,000 -> "1M", 200000 -> "200k". Used for the context-window total.
+function fmtCompact(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return `${parseFloat((v / 1e6).toFixed(1))}M`;
+  if (v >= 1e3) return `${parseFloat((v / 1e3).toFixed(1))}k`;
+  return String(v);
+}
+
+// Compact "time until reset" label for rate-limit windows, e.g. " (2h06m)".
+// Returns '' when resets_at is absent, unparseable, in the past, or >48h out
+// (a reset that far away is not actionable and would only add clutter).
+function formatUntil(resetsAt) {
+  const ts = parseTimestamp(resetsAt);
+  if (!ts) return '';
+  const delta = ts - Date.now();
+  if (delta <= 0 || delta > 48 * 3600 * 1000) return '';
+  return ` (${formatDurationCompact(delta)})`;
+}
+
 function formatCost(value) {
   return `$${Number(value || 0).toFixed(2)}`;
 }
@@ -158,6 +178,37 @@ function buildBranchUrl(repo, branch) {
 // Manual `statusline.js --install` is unchanged — --yes must be explicit.
 const AUTO_YES = process.argv.includes('--yes');
 
+// Resolve the interpreter to register in settings.json. Normally the current
+// Node binary (process.execPath), EXCEPT under Bun: when Bun runs lifecycle
+// scripts (postinstall) it spawns a `node` compatibility shim in the OS temp
+// dir (...\Temp\bun-node-<hash>\node.exe), and process.execPath points at
+// that throwaway copy — registering it would break the status line the next
+// time the temp dir is cleaned. process.versions.bun is set in both real-bun
+// and shim mode (the Bun global object only exists in real-bun mode), so
+// detect Bun there and locate the real binary: Bun.execPath → BUN_INSTALL →
+// a PATH scan. Falls back to a bare "bun" rather than the temp shim.
+function resolveInterpreter() {
+  if (!process.versions.bun) return process.execPath;
+  try {
+    if (typeof Bun !== 'undefined' && Bun.execPath) return Bun.execPath;
+  } catch { /* shim mode has no Bun global */ }
+  const name = process.platform === 'win32' ? 'bun.exe' : 'bun';
+  if (process.env.BUN_INSTALL) {
+    const cand = path.join(process.env.BUN_INSTALL, 'bin', name);
+    if (fs.existsSync(cand)) return cand;
+  }
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    // Skip Bun's temp script-shim dir (...\Temp\bun-node-<hash>\): it hosts
+    // node.exe/bun.exe copies that vanish when the OS cleans the temp dir.
+    if (!dir || dir.includes('bun-node-')) continue;
+    const cand = path.join(dir, name);
+    try {
+      if (fs.statSync(cand).isFile() && fs.statSync(cand).size > 0) return cand;
+    } catch { /* keep scanning */ }
+  }
+  return 'bun';
+}
+
 function promptYesNo(question) {
   if (AUTO_YES) {
     console.log(`${question} (y/n): y`);
@@ -209,11 +260,12 @@ async function installStatusLine() {
   }
 
   const commandPath = targetScript.split(path.sep).join('/');
-  // Use the absolute path of the running Node binary, not a bare "node":
+  // Use the absolute path of the running interpreter, not a bare "node":
   // Claude Code spawns statusLine commands via a non-interactive shell that
   // may not have node on PATH (nvm/volta on macOS/Linux install node outside
   // the system PATH), which would silently break the status line there.
-  const desiredCommand = `"${process.execPath}" "${commandPath}"`;
+  // Under Bun this resolves to the real bun binary (see resolveInterpreter).
+  const desiredCommand = `"${resolveInterpreter()}" "${commandPath}"`;
 
   let settings = {};
   if (fs.existsSync(settingsPath)) {
@@ -270,15 +322,14 @@ async function installStatusLine() {
   }
 }
 
-// Diagnostic: report the current install state of the status line + loopctl +
-// pricing.json. Mirrors `loopctl status` so users have one place to check
-// whether `npm install -g` actually wired everything up — useful when the
-// postinstall silently fails (read-only ~/.claude, locked settings.json, etc.).
+// Diagnostic: report the current install state of the status line + pricing.json.
+// Mirrors `status`-style commands so users have one place to check whether
+// `npm install -g` actually wired everything up — useful when the postinstall
+// silently fails (read-only ~/.claude, locked settings.json, etc.).
 function cmdStatus() {
   const home = os.homedir();
   const claudeDir = path.join(home, '.claude');
   const slPath = path.join(claudeDir, 'statusline.js');
-  const lcPath = path.join(claudeDir, 'loopctl.js');
   const settingsPath = path.join(claudeDir, 'settings.json');
   const pricingPath = path.join(claudeDir, 'pricing.json');
 
@@ -295,7 +346,6 @@ function cmdStatus() {
 
   console.log('cc-statusline install state:');
   console.log(fileLine('~/.claude/statusline.js', slPath));
-  console.log(fileLine('~/.claude/loopctl.js',     lcPath));
   console.log(fileLine('~/.claude/settings.json',  settingsPath));
   console.log(fileLine('~/.claude/pricing.json',   pricingPath));
 
@@ -309,12 +359,9 @@ function cmdStatus() {
   if (settings) {
     const sl = settings.statusLine && settings.statusLine.command;
     const sub = settings.subagentStatusLine && settings.subagentStatusLine.command;
-    const stop = (settings.hooks && settings.hooks.Stop) || [];
-    const hasLoopctl = stop.some(g => Array.isArray(g.hooks) && g.hooks.some(h => h.command && h.command.includes('loopctl.js')));
     console.log('\n  settings.json contents:');
     console.log(`    statusLine:           ${sl ? 'registered → ' + sl : 'NOT REGISTERED'}`);
     console.log(`    subagentStatusLine:   ${sub ? 'registered → ' + sub : 'NOT REGISTERED'}`);
-    console.log(`    hooks.Stop (loopctl): ${hasLoopctl ? 'registered' : 'NOT REGISTERED'}`);
   }
 
   // pricing.json entry count
@@ -423,18 +470,6 @@ function getGitBranch(currentDir) {
       stdio: ['pipe', 'pipe', 'ignore'],
     }).trim();
     return branch || null;
-  } catch {
-    return null;
-  }
-}
-
-// Read-only view of the auto-loop state written by loopctl.js
-// (<currentDir>/.claude/loop-state.json). This never writes to that file —
-// toggling the loop is loopctl's job, the status line only displays it.
-function readLoopState(currentDir) {
-  try {
-    const raw = fs.readFileSync(path.join(currentDir, '.claude', 'loop-state.json'), 'utf8');
-    return JSON.parse(raw);
   } catch {
     return null;
   }
@@ -827,19 +862,32 @@ process.stdin.on('end', () => {
 
   if (data.pr && typeof data.pr.number === 'number') {
     const reviewIcon = { approved: '✅', pending: '👀', changes_requested: '❗', draft: '📝' }[data.pr.review_state] || '';
-    firstLineParts.push(color(`PR#${data.pr.number}${reviewIcon}`, ANSI.dim));
+    const prKind = data.pr.kind === 'mr' ? 'MR' : 'PR';
+    firstLineParts.push(color(`${prKind}#${data.pr.number}${reviewIcon}`, ANSI.dim));
   }
 
   if (data.session_name) firstLineParts.push(color(`"${data.session_name}"`, ANSI.dim));
 
-  const loopState = readLoopState(currentDir);
-  if (loopState && loopState.enabled) {
-    firstLineParts.push(color(`🔁loop:${loopState.currentRound}/${loopState.maxRounds}`, ANSI.yellow));
+  // Worktree sessions (v2.1.x): show which worktree you're in — the branch
+  // alone doesn't tell you, since every worktree has its own branch.
+  if (data.worktree && data.worktree.name) {
+    firstLineParts.push(color(`🌳wt:${data.worktree.name}`, ANSI.dim));
+  }
+
+  // Agent sessions (--agent or agent settings): show the active agent.
+  if (data.agent && data.agent.name) {
+    firstLineParts.push(color(`🤖${data.agent.name}`, ANSI.dim));
   }
 
   if (cw && typeof cw.used_percentage === 'number') {
     const pct = Math.round(cw.used_percentage);
-    firstLineParts.push(color(`ctx:${pct}%`, colorForPercentage(pct)));
+    let ctxPart = `ctx:${pct}%`;
+    // Total window size matters now that 1M-context sessions are common:
+    // "ctx:23%/1M" reads very differently from "ctx:23%/200k".
+    if (typeof cw.context_window_size === 'number' && cw.context_window_size > 0) {
+      ctxPart += `/${fmtCompact(cw.context_window_size)}`;
+    }
+    firstLineParts.push(color(ctxPart, colorForPercentage(pct)));
   }
 
   // Second line: live activity + cost + mode flags. Grouped left-to-right as
@@ -877,20 +925,48 @@ process.stdin.on('end', () => {
   }
   if (durationMs !== null) secondLineParts.push(color(`dur:${formatDuration(durationMs)}`, ANSI.dim));
 
+  // Prompt-cache health (v2.1.251+): hit ratio + TTL is the fastest way to see
+  // whether your context churn is forcing full cache rebuilds — every rebuild
+  // re-bills cache_write on the whole prefix. hit_ratio arrives as a fraction
+  // (0..1) on current builds; guard against a 0..100 scale just in case.
+  const pc = data.prompt_cache;
+  if (pc && pc.caching_observed && typeof pc.hit_ratio === 'number') {
+    const pct = Math.round(pc.hit_ratio <= 1 ? pc.hit_ratio * 100 : pc.hit_ratio);
+    const ttlLabel = pc.warm && pc.ttl ? `(${pc.ttl})` : '(cold)';
+    secondLineParts.push(
+      color(`pc:${pct}%${ttlLabel}`, pct >= 80 ? ANSI.green : pct >= 50 ? ANSI.yellow : ANSI.red)
+    );
+  }
+
   // Rate limits + mode flags append to the end of the second line, only when present.
-  const fiveHourPct = data.rate_limits && data.rate_limits.five_hour && typeof data.rate_limits.five_hour.used_percentage === 'number'
-    ? Math.round(data.rate_limits.five_hour.used_percentage)
+  const fiveHour = data.rate_limits && data.rate_limits.five_hour;
+  const sevenDay = data.rate_limits && data.rate_limits.seven_day;
+  const spendLimit = data.rate_limits && data.rate_limits.spend_limit;
+  const fiveHourPct = fiveHour && typeof fiveHour.used_percentage === 'number'
+    ? Math.round(fiveHour.used_percentage)
     : null;
-  const sevenDayPct = data.rate_limits && data.rate_limits.seven_day && typeof data.rate_limits.seven_day.used_percentage === 'number'
-    ? Math.round(data.rate_limits.seven_day.used_percentage)
+  const sevenDayPct = sevenDay && typeof sevenDay.used_percentage === 'number'
+    ? Math.round(sevenDay.used_percentage)
     : null;
-  if (fiveHourPct !== null) secondLineParts.push(color(`5h:${fiveHourPct}%`, colorForPercentage(fiveHourPct)));
-  if (sevenDayPct !== null) secondLineParts.push(color(`7d:${sevenDayPct}%`, colorForPercentage(sevenDayPct)));
+  if (fiveHourPct !== null) {
+    secondLineParts.push(color(`5h:${fiveHourPct}%${formatUntil(fiveHour.resets_at)}`, colorForPercentage(fiveHourPct)));
+  }
+  if (sevenDayPct !== null) {
+    secondLineParts.push(color(`7d:${sevenDayPct}%${formatUntil(sevenDay.resets_at)}`, colorForPercentage(sevenDayPct)));
+  }
+  if (spendLimit && typeof spendLimit.used_percentage === 'number') {
+    const spendPct = Math.round(spendLimit.used_percentage);
+    secondLineParts.push(color(`sp:${spendPct}%`, colorForPercentage(spendPct)));
+  }
 
   if (data.fast_mode) secondLineParts.push(color('⚡fast', ANSI.yellow));
   if (data.thinking && data.thinking.enabled) secondLineParts.push(color('🧠think', ANSI.dim));
   if (data.effort && data.effort.level) secondLineParts.push(color(`eff:${data.effort.level}`, ANSI.dim));
   if (data.vim && data.vim.mode) secondLineParts.push(color(`VIM:${data.vim.mode}`, ANSI.dim));
+  if (data.output_style && data.output_style.name && !/^default$/i.test(data.output_style.name)) {
+    secondLineParts.push(color(`style:${data.output_style.name}`, ANSI.dim));
+  }
+  if (data.version) secondLineParts.push(color(`v${data.version}`, ANSI.dim));
 
   const lines = [firstLineParts.join(' ')];
   if (secondLineParts.length) lines.push(secondLineParts.join(' '));

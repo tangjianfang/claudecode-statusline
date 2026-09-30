@@ -1,9 +1,40 @@
 # cc-statusline
 
-Custom status line for [Claude Code](https://claude.ai/code), plus an optional auto-continue loop. Single-file Node.js scripts, zero dependencies (built-ins only).
+A custom status line for [Claude Code](https://claude.ai/code): model, output TPS, token/cost totals, git branch, context usage, prompt-cache health and rate limits — plus one row per subagent. Single-file Node.js scripts, zero dependencies (built-ins only), Node ≥ 16 or Bun.
 
-- **`statusline.js`** — model, output TPS, tokens, cost, git branch, context %, rate-limit usage. Also renders one row per subagent.
-- **`loopctl.js`** — turns Claude Code's `Stop` hook into a per-project, opt-in "keep going" loop. **Off everywhere by default**; you enable it per-project with `loopctl on`.
+![cc-statusline running in Claude Code with multiple subagents](docs/cc-statusline-preview.png)
+
+## What it shows
+
+Main session — two lines; every segment appears only when the data exists:
+
+```
+[Sonnet 5] 📁 my-project 🌿 main PR#123👀 🌳wt:my-wt ctx:42%/200k
+TPS:38.2 out:1.2k cache:15k pc:87%(5m) Σ↓120k ↑8.4k +120/-15 ~cost:$0.31 dur:2m 14s 5h:24% (2h06m) 7d:81% sp:45% ⚡fast 🧠think eff:high
+```
+
+| Segment | Meaning |
+|---|---|
+| `[model]` `📁` `🌿` | Model, cwd (clickable `file://` link), branch (clickable link to its GitHub / GitLab / Bitbucket page) |
+| `PR#123👀` / `MR#` | PR number + review state; GitLab merge requests render `MR#` |
+| `🌳wt:` / `🤖` | Worktree name / agent name (`--agent` sessions) |
+| `ctx:42%/200k` | Context usage against the actual window size (green → yellow → red) |
+| `TPS:38.2` | Output tokens/sec of the last response; `(Xm ago)` once it's over 2 min stale |
+| `out:` `cache:` | Last response's output / cache-read tokens |
+| `pc:87%(5m)` | Prompt-cache hit ratio + TTL (`(cold)` while rebuilding) — every miss re-bills cache-write on the whole prefix |
+| `Σ↓ ↑` | Session-wide input/output token totals |
+| `+120/-15` | Lines added / removed |
+| `~cost:` | Self-computed cost (see below); `~cost?:` marks the untrusted client-estimate fallback |
+| `dur:` | Session duration |
+| `5h:` `7d:` `sp:` | Rate-limit / spend-limit usage, with a compact time-to-reset |
+| `⚡fast` `🧠think` `eff:` `VIM:` `style:` | Mode flags; the trailing `v2.x` is the Claude Code version |
+
+Subagent rows — one line per task, real stats from the agent's own transcript when available (`TPS`), payload-derived fallback otherwise (`tok/s`):
+
+```
+local_agent  running  Verifying soak.sh binary configuration  67.5TPS  tok:198k(20%)  out:8.7k  1h7m  ~$1.23
+Explore      running  166.7tok/s  tok:50k(25%)  5m00s  ~$0.01  eff:high
+```
 
 ## Install
 
@@ -11,186 +42,51 @@ Custom status line for [Claude Code](https://claude.ai/code), plus an optional a
 npm install -g @tangjianfang/claudecode-statusline
 ```
 
-The `postinstall` hook automatically:
+Done — the postinstall copies `statusline.js` to `~/.claude/`, registers it as both `statusLine` and `subagentStatusLine`, and seeds `~/.claude/pricing.json`. Restart Claude Code. Also published under the shorter name `@tangjianfang/cc-statusline`.
 
-- copies `statusline.js` + `loopctl.js` to `~/.claude/`
-- registers them in `~/.claude/settings.json` (`statusLine`, `subagentStatusLine`, `hooks.Stop`)
-- seeds `~/.claude/pricing.json` if missing
+Other package managers (all tested; the only difference is whether the wiring postinstall is allowed to run):
 
-Restart Claude Code. Done.
+| Manager | Command | Wiring |
+|---|---|---|
+| Yarn Classic (v1) | `yarn global add @tangjianfang/claudecode-statusline` | automatic |
+| Bun | `bun add -g @tangjianfang/claudecode-statusline` then `bun pm -g trust @tangjianfang/claudecode-statusline` | after `trust` |
+| pnpm (v10+) | `pnpm add -g @tangjianfang/claudecode-statusline` then `pnpm approve-builds -g` | after approval |
+| Yarn Berry (v2+) | add as a project dependency, then run `cc-statusline --install` once | manual (Berry removed `global add`) |
 
-The same package is also published under the shorter name `@tangjianfang/cc-statusline`.
+Under Bun the registered interpreter is the real Bun binary, so Node doesn't need to be installed. Manual wiring works everywhere: `cc-statusline --install` (or `git clone` + `./install.sh`); check what's wired with `cc-statusline status`.
 
-## What it looks like
+> **Upgrading from v1.x?** The `loopctl` auto-continue loop was removed — Claude Code has native `/goal` now. The postinstall deregisters its Stop hook and deletes the old files automatically.
 
-Two lines in the status bar:
+## Cost estimation
 
-```
-[Sonnet 5] 📁 my-project 🌿 main PR#123👀 ctx:42%
-TPS:38.2 out:1.2k cache:15k Σ↓120k ↑8.4k +120/-15 ~cost:$0.31 dur:2m 14s 5h:24% 7d:81% ⚡fast 🧠think eff:high
-```
-
-The branch name is a clickable link to that branch's page on the remote (GitHub / GitLab / Bitbucket) when the `origin` resolves; on other hosts it stays plain text. Subagent rows render like:
+Claude Code's `total_cost_usd` is priced at Anthropic's rates — wrong when you route to a third-party model via `ANTHROPIC_BASE_URL` (MiniMax, GLM, Kimi, …). So the script self-computes cost from the transcript's token counts × a plain, editable pricing table:
 
 ```
-local_agent  running  Verifying soak.sh binary configuration  67.5TPS  tok:198k(20%)  out:8.7k  1h7m  ~$1.23
-Explore      running  166.7tok/s  tok:50k(25%)  5m00s  ~$0.01  eff:high
+cost = freshInput/1M × in + output/1M × out + cacheRead/1M × cacheRead + cacheCreate/1M × cacheWrite
 ```
 
-The first row shows real per-agent stats: the live activity label, TPS/`tok:`/`out:`/`~$` computed from the agent's own transcript (`<project dir>/<session id>/subagents/agent-<id>.jsonl`), which works even on builds where the payload's `tokenCount` stays 0 the whole run. The second row is the fallback when no agent transcript exists — rate labeled `tok/s` (payload-derived, coarser) and cost from `tokenCount × input rate` (a lower bound). Fields with no data are omitted rather than shown as zeros.
+`pricing.json` ships with the repo and is seeded to `~/.claude/pricing.json` on install (never overwrites your copy). It covers the canonical chat models of Anthropic, OpenAI, Gemini, MiniMax, DeepSeek, Llama, Mistral, Grok, Cohere, Qwen, Z.ai/GLM and Moonshot/Kimi, keyed by model name — exact match first, then longest substring (`glm-5.3[1m]` matches `glm-5.3`). No match → falls back to the client estimate, shown as `~cost?:`.
 
-### Screenshot
-
-Real example while running in Claude Code — the status line (model, project, branch, loop badge, context %, TPS, tokens, cost, duration, rate limits, reasoning effort) plus one row per active subagent, all live:
-
-![cc-statusline running in Claude Code with multiple subagents](docs/cc-statusline-preview.png)
-
-Each subagent row shows its name, status, recent throughput (`tok/s`), context usage with percent of window, how long it's been running, an approximate cost (when `ANTHROPIC_MODEL` is set so the script can look up pricing — see [Cost estimation](#cost-estimation)), and reasoning effort. The cost figure is approximate since subagent payloads don't break down input vs output tokens; the `~$` prefix flags it.
-
-## Auto-continue loop (loopctl)
-
-Off everywhere by default. To use it in a project:
+Refresh rates on demand (deliberately no auto-update — rewriting rate data in the background is not this tool's job):
 
 ```bash
-cd /path/to/project
-
-loopctl on --max 8 --push     # enable: up to 8 rounds, auto-commit + push each round
-loopctl off                   # disable
-loopctl status                # show current state
-loopctl presets               # list built-in prompts (find-bugs, improve, tests, ...)
+pricing-updater                                  # merge fresh rates into ~/.claude/pricing.json
+pricing-updater --list minimax                   # inspect matching keys + rates, write nothing
+pricing-updater --out pricing.json --overwrite   # maintainer: refresh the repo's shipped copy
 ```
 
-Built-in presets for `--preset <name>`: `next-step` (default), `find-bugs`, `improve`, `tests`, `docs`, `refactor`. For a fully custom prompt, use `--prompt "your text here"`.
+## How it works
 
----
+Claude Code pipes a JSON payload on stdin. Per-message token/timing data isn't in it, so the script re-parses the JSONL transcript at `transcript_path`, pairing each assistant message's `usage.output_tokens` with the preceding user-message timestamp to derive TPS, and accumulating session-wide totals (sidechain entries feed the Σ totals but not the main-line figures). Subagent stats come from `<project dir>/<session id>/subagents/agent-<task id>.jsonl`, parsed the same way. To see what your build actually sends: `touch ~/.claude/statusline-debug`, reproduce, then read `~/.claude/statusline-payloads.log`.
 
-## Reference
+## Limitations
 
-### Manual / GitHub install
+- **TPS describes the last response, not real-time decode** — the window includes network round-trips and time-to-first-token, and the line only re-runs when a new message completes. Add `"refreshInterval": 2` to the statusLine config for more frequent refresh.
+- **`~cost:` is an estimate** — as accurate as your `pricing.json` rates.
+- **Subagent stats depend on the agent transcript** — without it, rows fall back to the payload's sparsely-populated `tokenCount`/`tokenSamples`; absent fields are omitted rather than shown as zeros.
+- **`pc:` / `5h:` / `7d:` / `sp:` need gateway data** — they appear only after the first API response, and may never appear on third-party `ANTHROPIC_BASE_URL` gateways.
+- **Branch links cover GitHub / GitLab / Bitbucket** — self-hosted Git renders plain text.
 
-If you'd rather skip npm (or want fine-grained control over what gets overwritten):
+## Releasing a new version (maintainer)
 
-```bash
-git clone https://github.com/tangjianfang/claudecode-statusline.git
-cd claudecode-statusline
-./install.sh                  # macOS/Linux (or: node statusline.js --install)
-./install-loopctl.sh          # auto-loop  (or: node loopctl.js --install)
-```
-
-Each `--install` runs the same y/n prompts as before — handy if you want to keep an existing file or setting.
-
-After installing, verify the wiring with:
-
-```bash
-cc-statusline status    # shows ~/.claude files, settings.json contents, pricing.json entry count
-loopctl status           # shows loop state for the current project
-```
-
-### Cost estimation
-
-The `~cost:` figure is computed by the script itself from the transcript's token counts (split into fresh input / output / cache-read / cache-creation, accumulated session-wide), times a per-model pricing table that lives in `pricing.json`:
-
-```
-cost = freshInput/1M × p.in
-     + output/1M      × p.out
-     + cacheRead/1M   × p.cacheRead
-     + cacheCreate/1M × p.cacheWrite
-```
-
-**Why self-compute:** Claude Code's `data.cost.total_cost_usd` is priced at Anthropic's rates, which is wrong when you route to a third-party model via `ANTHROPIC_BASE_URL` (e.g. MiniMax).
-
-**The pricing file:** `pricing.json` is the single source of truth — one file, shipped with the repo and seeded into `~/.claude/pricing.json` on install (only if it doesn't already exist; never overwrites your copy). It covers the canonical chat models of every mainstream provider: Anthropic, OpenAI, Google/Gemini, MiniMax, DeepSeek, Meta/Llama, Mistral, xAI/Grok, Cohere, Alibaba/Qwen.
-
-Key format:
-
-```json
-{
-  "MiniMax-M3": { "in": 0.3, "out": 1.2, "cacheRead": 0.06, "cacheWrite": 0 }
-}
-```
-
-`statusline.js` resolves a model by exact name first, then longest case-insensitive substring. When no entry matches, it falls back to `data.cost.total_cost_usd` shown as `~cost?:` to flag that it's the untrusted client estimate. Both figures are estimates — hence the `~` prefix; don't "fix" this by dropping the prefix.
-
-#### Refreshing rates manually
-
-```bash
-node pricing-updater.js                                # fetch mainstream providers, merge into ~/.claude/pricing.json
-node pricing-updater.js --model KEY                    # also include a specific litellm key (repeatable)
-node pricing-updater.js --list [pattern]               # print matching keys + rates, write nothing
-node pricing-updater.js --overwrite                    # replace target entirely instead of merging
-node pricing-updater.js --out pricing.json --overwrite # maintainer: refresh repo's shipped copy
-```
-
-There is **no scheduled task and no auto-update** — updating pricing is an explicit, user-initiated action, since silently rewriting rate data in the background (with the network and trust risks that entails) is not something this tool does for you.
-
-### loopctl flags (full)
-
-| Flag | Description |
-|---|---|
-| `--max N` | Auto-continue for at most N rounds (default 8). **Claude Code force-releases a Stop hook after 8 consecutive blocks without progress**, so `--max` above 8 may be cut short. Raise the ceiling with `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`. |
-| `--push` / `--no-push` | Run `git add -A && git commit && git push` each round (default off). **Pushes directly to the current branch, including `main`** — no dedicated-branch safety net. |
-| `--preset <name>` | Pick the per-round prompt from a built-in template. Unknown names error out. |
-| `--prompt "..."` | Fully customize the per-round prompt; takes precedence over `--preset` (last-parsed wins). |
-
-#### Built-in `--preset` values
-
-| Name | Prompt |
-|---|---|
-| `next-step` (default) | What is the next task? Plan and execute it. |
-| `find-bugs` | Proactively check the current code for potential bugs or logic issues. Fix any you find and explain the fix. |
-| `improve` | Proactively look for things in the project that can be improved (code quality, readability, performance, docs, test coverage, etc.). Pick one valuable improvement and make it. |
-| `tests` | Check whether the project's tests are complete and passing. Add missing test cases or fix failing tests. |
-| `docs` | Check whether the docs (README, comments, etc.) are consistent with the current code. Update anything outdated or missing. |
-| `refactor` | Find a piece of code that can be safely simplified or refactored, and do so without changing behavior. |
-
-### npm scripts
-
-| Script | What it does |
-|---|---|
-| `npm run check` | Syntax-check all three scripts (`node --check`). |
-| `npm run install` | Run both `--install` flows manually. |
-| `npm run install-statusline` | Install only the status line. |
-| `npm run install-loopctl` | Install only loopctl. |
-| `npm run update-pricing` | Fetch current rates and merge into `~/.claude/pricing.json`. |
-| `npm run pricing:list -- minimax` | Print litellm keys/rates matching a pattern. |
-| `npm run presets` | List loopctl's built-in `--preset` prompts. |
-| `npm run demo` / `npm run demo:subagent` | Smoke test against an empty / sample payload. |
-
-> `loopctl on` / `off` / `status` are deliberately not npm scripts (npm `run` uses the package dir as cwd, so a `npm run loopctl:on` would toggle the loop for *this repo*, not your project). Run `loopctl on` directly inside the target project.
-
-### Dependencies
-
-None — only Node.js built-ins (`fs`, `path`, `os`, `readline`, `child_process`, `url`, `https`). Node.js ≥ 16.
-
-### How the status line gets its data
-
-Claude Code pipes a JSON payload on stdin. The main-session payload has session/cost/rate-limit info but no per-message token/timing data, so the script re-parses the JSONL transcript at `data.transcript_path` line-by-line, pairing each `assistant` message's `usage.output_tokens` with the timestamp of the preceding `user` message to derive TPS and accumulate session-wide input/output totals (excluding cache-read tokens from the input sum, since those repeat every turn). Subagent (`isSidechain`) entries share the transcript file but are skipped for the main line's TPS/out/cache (subagent rows show their own rates) while still counting toward the session-wide Σ totals. For subagent rows, the per-task rate comes from `tokenSamples` (parsed defensively; falls back to `tokenCount / elapsed` when the shape is unrecognized).
-
-### Known limitations
-
-- **TPS is not real-time** — the line only re-runs when a new assistant message completes, `/compact` finishes, permission mode changes, etc. For more frequent refresh, add `"refreshInterval": 2` to the `statusLine` config in `~/.claude/settings.json`. While the main conversation is blocked waiting on subagents, the figure is stale by design (it describes the last main response); once it is over 2 minutes old it is labeled `TPS:N (Xm ago)` so a "frozen" value reads as waiting rather than broken.
-- **TPS reads low** — the denominator is "previous user/tool_result timestamp → assistant message completion", which includes network round-trips and time-to-first-token rather than pure decode time.
-- **`~cost:` is an estimate** — see [Cost estimation](#cost-estimation).
-- **Subagent stats come from the agent transcript when it exists** — Claude Code writes background/local agents to `<project dir>/<session id>/subagents/agent-<task id>.jsonl` with the same usage/timestamp shape as the main transcript, so per-agent TPS, context %, output total and cost are computed the same way as the main line. On builds where that file is absent, the row falls back to the payload's undocumented `tokenSamples` (labeled `tok/s`) or `tokenCount / elapsed`, and zero/absent counts omit the fields instead of rendering `tok:0(0%)` — Claude Code populates `tokenCount` sparsely (it stays 0 for whole runs on current builds, which is why the transcript fallback exists). To inspect what Claude Code actually sends: `touch ~/.claude/statusline-debug`, reproduce, then read `~/.claude/statusline-payloads.log` (size-capped at ~512KB). Delete the flag file to stop logging.
-- **Branch links support GitHub / GitLab / Bitbucket only** — self-hosted Git renders the branch as plain text rather than a guessed-wrong link.
-- **loopctl is an open-ended autonomous loop** — the round cap only prevents infinite runs; it doesn't check whether the work is actually done. Don't leave it unattended for long stretches.
-- **loopctl's `--max` is bounded by Claude Code's own Stop-hook protection** (8 by default).
-- **loopctl's `--push` pushes directly to the current branch** (including `main`) — no dedicated-branch guard. Push failures don't abort the loop but are folded into the `reason` text.
-
-### Notes
-
-The end of `statusline.js` contains an optional, environment-specific integration: if `AUTOCLAUDE_BROADCAST` is set to a `broadcast.js` module path, the current session info is broadcast to an "AutoClaude" sensor. Wrapped in try/catch; silently skips when the variable is unset or the path is missing, so it never affects status line output.
-
-### Releasing a new version (maintainer)
-
-Pushes to `main` trigger `.github/workflows/publish.yml`, which auto-publishes to npm — but only when the version in `package.json` differs from what's already on npm. Docs-only pushes are silent. The release flow:
-
-```bash
-npm version patch   # bumps version in package.json + creates local v1.0.3 tag
-# update CHANGELOG.md
-git add . && git commit -m "..." && git push
-```
-
-CI then: publishes to `@tangjianfang/claudecode-statusline`, publishes to `@tangjianfang/cc-statusline`, pushes the `v1.0.3` tag, and creates the GitHub Release.
-
-**Required GitHub secret:** `NPM_TOKEN` — a granular access token with bypass-2fa + publish scope on both packages. Add it at `https://github.com/tangjianfang/claudecode-statusline/settings/secrets/actions`.
+Pushes to `main` auto-publish via CI — but only when the version in `package.json` differs from npm, so docs-only pushes stay silent. Flow: `npm version patch` → update `CHANGELOG.md` → commit & push. CI publishes both package names, pushes the `vX.Y.Z` tag, and creates the GitHub Release. Requires the `NPM_TOKEN` secret (granular, bypass-2fa, publish scope on both packages).
