@@ -38,6 +38,28 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      # Fail fast with a clear message (instead of a cryptic 403 at publish
+      # time) when NPM_TOKEN is invalid or expired, and surface the token's
+      # expiry date — stored in the repo variable NPM_TOKEN_EXPIRES (YYYY-MM-DD)
+      # — as a warning annotation when rotation is due.
+      - name: Verify NPM_TOKEN (auth + expiry)
+        run: |
+          whoami="$(npm whoami 2>&1)" || {
+            echo "::error::NPM_TOKEN is invalid or expired. Create a new granular token (read-write, bypass 2FA) at npmjs.com → Access Tokens, then run: gh secret set NPM_TOKEN --repo tangjianfang/claudecode-statusline"
+            exit 1
+          }
+          echo "npm auth OK: $whoami"
+          if [ -n "$NPM_TOKEN_EXPIRES" ]; then
+            days=$(( ( $(date -d "$NPM_TOKEN_EXPIRES" +%s) - $(date +%s) ) / 86400 ))
+            echo "NPM_TOKEN expires ${NPM_TOKEN_EXPIRES} (in ${days} days)"
+            if [ "$days" -le 14 ]; then
+              echo "::warning::NPM_TOKEN expires in ${days} day(s) (${NPM_TOKEN_EXPIRES}) — rotate it soon: npmjs.com → Access Tokens → new granular token (bypass 2FA) → gh secret set NPM_TOKEN --repo tangjianfang/claudecode-statusline, then update the NPM_TOKEN_EXPIRES variable"
+            fi
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN_EXPIRES: ${{ vars.NPM_TOKEN_EXPIRES }}
+
       # Compare the version in package.json against the latest version
       # published under the canonical name. If they match, skip everything
       # — no version churn from docs-only pushes.
