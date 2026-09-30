@@ -44,10 +44,12 @@ npm install -g @tangjianfang/claudecode-statusline
 
 Done — the postinstall copies `statusline.js` to `~/.claude/`, registers it as both `statusLine` and `subagentStatusLine`, and seeds `~/.claude/pricing.json`. Restart Claude Code. Also published under the shorter name `@tangjianfang/cc-statusline`.
 
-Other package managers (all tested; the only difference is whether the wiring postinstall is allowed to run):
+Other package managers and newer npm (all tested; the only difference is whether the wiring postinstall is allowed to run):
 
 | Manager | Command | Wiring |
 |---|---|---|
+| npm ≤ 11 | `npm install -g @tangjianfang/claudecode-statusline` | automatic |
+| npm 12+ | add `--allow-scripts=@tangjianfang/claudecode-statusline` to the install (or `npm config set allow-scripts=@tangjianfang/claudecode-statusline --location=user` once, for all global installs) — npm v12 blocks install scripts by default | after `--allow-scripts` |
 | Yarn Classic (v1) | `yarn global add @tangjianfang/claudecode-statusline` | automatic |
 | Bun | `bun add -g @tangjianfang/claudecode-statusline` then `bun pm -g trust @tangjianfang/claudecode-statusline` | after `trust` |
 | pnpm (v10+) | `pnpm add -g @tangjianfang/claudecode-statusline` then `pnpm approve-builds -g` | after approval |
@@ -89,4 +91,6 @@ Claude Code pipes a JSON payload on stdin. Per-message token/timing data isn't i
 
 ## Releasing a new version (maintainer)
 
-Pushes to `main` auto-publish via CI — but only when the version in `package.json` differs from npm, so docs-only pushes stay silent. Flow: `npm version patch` → update `CHANGELOG.md` → commit & push. CI publishes both package names, pushes the `vX.Y.Z` tag, and creates the GitHub Release. Requires the `NPM_TOKEN` secret (granular, bypass-2fa, publish scope on both packages).
+Pushes to `main` auto-publish via CI — but only when the version in `package.json` differs from npm, so docs-only pushes stay silent. Flow: `npm version patch` → update `CHANGELOG.md` → commit & push. CI publishes both package names, pushes the `vX.Y.Z` tag, and creates the GitHub Release.
+
+CI authentication: the classic route is a granular npm token with publish scope on both packages stored as the `NPM_TOKEN` secret — note npm is deprecating 2FA-bypass tokens (they lose account/package management now and direct publish around Jan 2027, per npm's [security changelog](https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/)), so plan to migrate the workflow to npm **trusted publishing** (OIDC, tokenless) before then.
