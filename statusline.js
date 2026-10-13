@@ -374,6 +374,19 @@ function cmdStatus() {
       console.log('\n  pricing.json: COULD NOT PARSE');
     }
   }
+
+  // Anything missing? Point at the fix — the usual cause is Bun/pnpm/npm 12+
+  // having blocked the wiring postinstall ("Blocked 2 postinstalls"), which
+  // reads like a broken install but isn't: the bins work, only the settings
+  // were never written.
+  const wired = exists(slPath) && settings &&
+    settings.statusLine && settings.statusLine.command &&
+    settings.subagentStatusLine && settings.subagentStatusLine.command;
+  if (!wired) {
+    console.log('\n  → Not wired: run `cc-statusline --install` to finish.');
+    console.log('    (Bun, pnpm and npm 12+ block install scripts by default — the wiring');
+    console.log('    postinstall never ran; the bins themselves are fine.)');
+  }
 }
 
 if (process.argv.includes('--install')) {

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `cc-statusline status` now ends with an actionable hint ("→ Not wired: run `cc-statusline --install` to finish") when `~/.claude/statusline.js` or the `statusLine` / `subagentStatusLine` settings are missing — the exact state a Bun / pnpm / npm 12+ install leaves behind, since those managers block package install scripts by default and Bun's only signal is one easy-to-miss `Blocked 2 postinstalls` line. The README Install section gained a matching symptom-first troubleshooting note. Re-verified end-to-end against a sandboxed Bun 1.4.3 global install: plain `bun add -g` wires nothing, `bun pm -g trust` runs both wiring scripts immediately (no reinstall needed), and `cc-statusline --install` from Bun's global bin works.
+
 ## [2.0.0] - 2026-09-30
 
 ### Removed

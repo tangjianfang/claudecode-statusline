@@ -57,6 +57,8 @@ Other package managers and newer npm (all tested; the only difference is whether
 
 Under Bun the registered interpreter is the real Bun binary, so Node doesn't need to be installed. Manual wiring works everywhere: `cc-statusline --install` (or `git clone` + `./install.sh`); check what's wired with `cc-statusline status`.
 
+> **Installed with Bun, pnpm or npm 12+ and the status line doesn't show?** Nothing is broken — those managers block package install scripts by default, so the wiring postinstall never ran (Bun prints one easy-to-miss line, `Blocked 2 postinstalls`). Run `cc-statusline --install` to wire it manually, or let the scripts run as shown in the table above.
+
 > **Upgrading from v1.x?** The `loopctl` auto-continue loop was removed — Claude Code has native `/goal` now. The postinstall deregisters its Stop hook and deletes the old files automatically.
 
 ## Cost estimation
