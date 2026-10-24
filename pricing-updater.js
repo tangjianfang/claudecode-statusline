@@ -16,6 +16,8 @@
 // the network and trust risks that entails) is not something this tool does for
 // you. The status line itself never hits the network — it only reads the cached
 // pricing.json, so renders stay fast and never block on a fetch.
+// A manual run also checks the npm dist-tags for a newer cc-statusline release and
+// prints an upgrade hint — read-only and best-effort, like everything else here.
 //
 // Usage:
 //   node pricing-updater.js                 fetch all mainstream providers' canonical chat models, merge into ~/.claude/pricing.json
@@ -165,6 +167,70 @@ function fetchJson(url) {
   });
 }
 
+// --- Best-effort update notice ------------------------------------------------
+// npm global packages never auto-update, and the script Claude Code actually runs
+// is the ~/.claude/statusline.js copy, which no npm upgrade refreshes on its own.
+// A manual pricing-updater run is the one place this tool already talks to the
+// network, so it also peeks at the npm dist-tags and mentions a newer release.
+// Read-only, short-timeout, silent on any failure — never blocks the rate refresh.
+
+const PKG_NAME = '@tangjianfang/claudecode-statusline';
+
+function ownVersion() {
+  try {
+    return require(path.join(__dirname, 'package.json')).version || null;
+  } catch {
+    return null; // standalone copy without package.json — nothing to compare
+  }
+}
+
+// Numeric x.y.z compare; prerelease suffixes are dropped so a "-beta" dist-tag
+// still counts as newer (fine for a human-facing notice).
+function isNewer(a, b) {
+  const pa = a.replace(/-.*$/, '').split('.').map(Number);
+  const pb = b.replace(/-.*$/, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0;
+  }
+  return false;
+}
+
+async function checkForUpdate() {
+  const current = ownVersion();
+  if (!current) return;
+  try {
+    const tags = await new Promise((resolve, reject) => {
+      const req = https.get(`https://registry.npmjs.org/-/package/${PKG_NAME}/dist-tags`, res => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`HTTP ${res.statusCode}`));
+        }
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+      req.on('error', reject);
+      // Offline / blocked networks must not hang the run: fail fast instead.
+      req.setTimeout(3000, () => req.destroy(new Error('timeout')));
+    });
+    const latest = tags && tags.latest;
+    if (typeof latest === 'string' && isNewer(latest, current)) {
+      console.log(`\n⬆  cc-statusline ${latest} is available (installed: ${current})`);
+      console.log(`   npm install -g ${PKG_NAME}@latest`);
+      console.log('   then, if your package manager blocked install scripts: cc-statusline --install');
+    }
+  } catch {
+    /* offline / blocked / malformed registry reply — never fail a pricing run */
+  }
+}
+
 function readExisting(file) {
   try {
     if (!fs.existsSync(file)) return {};
@@ -250,6 +316,7 @@ async function main() {
       console.log(`  ${k}  ${formatEntry(entryFromLitellm(e))}  src=${e.source || '?'}`);
     }
     if (matches.length > 200) console.log(`  ... and ${matches.length - 200} more`);
+    await checkForUpdate();
     return;
   }
 
@@ -280,6 +347,7 @@ async function main() {
   console.log(`\n${overwrite ? 'Wrote' : 'Merged into'} ${outFile} (${Object.keys(merged).length} entries):`);
   console.log(report.join('\n'));
   console.log(`\nDone. The status line picks this up on its next render.`);
+  await checkForUpdate();
 }
 
 main().catch(err => {

@@ -14,6 +14,13 @@ const readline = require('readline');
 const { execSync } = require('child_process');
 const { pathToFileURL } = require('url');
 
+// This script's own version, embedded rather than read from package.json: --install
+// copies this file to ~/.claude/statusline.js, where no package.json sits next to it,
+// and that installed copy is exactly where a version marker matters most — npm never
+// refreshes it on its own, so a stale copy would otherwise be invisible. `npm run
+// check` verifies this stays in sync with package.json.
+const VERSION = '2.1.0';
+
 const ANSI = {
   reset: '\x1b[0m',
   cyan: '\x1b[36m',
@@ -980,6 +987,9 @@ process.stdin.on('end', () => {
     secondLineParts.push(color(`style:${data.output_style.name}`, ANSI.dim));
   }
   if (data.version) secondLineParts.push(color(`v${data.version}`, ANSI.dim));
+  // Our own version, always last: the trailing `v2.x` above is Claude Code's, not
+  // ours — this makes a stale ~/.claude/statusline.js copy visible at a glance.
+  secondLineParts.push(color(`ccsl${VERSION}`, ANSI.dim));
 
   const lines = [firstLineParts.join(' ')];
   if (secondLineParts.length) lines.push(secondLineParts.join(' '));
