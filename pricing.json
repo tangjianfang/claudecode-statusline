@@ -32,7 +32,7 @@
   "claude-sonnet-5-5": {
     "in": 2,
     "out": 10,
-    "cacheRead": 0.2,
+    "cacheRead": 0.1,
     "cacheWrite": 2.5
   },
   "claude-sonnet-4-6": {
@@ -108,6 +108,12 @@
     "cacheWrite": 6.25
   },
   "computer-use-preview": {
+    "in": 3,
+    "out": 12,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "computer-use-preview-2025-03-11": {
     "in": 3,
     "out": 12,
     "cacheRead": 0,
@@ -351,7 +357,7 @@
     "in": 2.5,
     "out": 7.5,
     "cacheRead": 0.5,
-    "cacheWrite": 0
+    "cacheWrite": 3.125
   },
   "qwen3.7-plus": {
     "in": 0,
@@ -405,6 +411,12 @@
     "in": 0.3,
     "out": 2.5,
     "cacheRead": 0.03,
+    "cacheWrite": 0
+  },
+  "deep-research-pro-preview-12-2025": {
+    "in": 2,
+    "out": 12,
+    "cacheRead": 0.2,
     "cacheWrite": 0
   },
   "gemini-2.5-flash-lite": {
@@ -653,6 +665,12 @@
     "cacheRead": 0,
     "cacheWrite": 0
   },
+  "gpt-audio-mini-2025-10-06": {
+    "in": 0.6,
+    "out": 2.4,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
   "gpt-audio-mini-2025-12-15": {
     "in": 0.6,
     "out": 2.4,
@@ -683,7 +701,19 @@
     "cacheRead": 0.075,
     "cacheWrite": 0
   },
+  "gpt-4o-mini-search-preview-2025-03-11": {
+    "in": 0.15,
+    "out": 0.6,
+    "cacheRead": 0.075,
+    "cacheWrite": 0
+  },
   "gpt-4o-search-preview": {
+    "in": 2.5,
+    "out": 10,
+    "cacheRead": 1.25,
+    "cacheWrite": 0
+  },
+  "gpt-4o-search-preview-2025-03-11": {
     "in": 2.5,
     "out": 10,
     "cacheRead": 1.25,
@@ -1083,6 +1113,18 @@
     "in": 0.15,
     "out": 0.6,
     "cacheRead": 0.015,
+    "cacheWrite": 0
+  },
+  "mistral-large-4": {
+    "in": 0.68,
+    "out": 2.09,
+    "cacheRead": 0.068,
+    "cacheWrite": 0
+  },
+  "mistral-large-4-0": {
+    "in": 0.68,
+    "out": 2.09,
+    "cacheRead": 0.068,
     "cacheWrite": 0
   },
   "mistral-large-latest": {
@@ -1589,6 +1631,12 @@
     "cacheRead": 1.25,
     "cacheWrite": 0
   },
+  "gpt-5.5-cyber-preview": {
+    "in": 12.5,
+    "out": 75,
+    "cacheRead": 1.25,
+    "cacheWrite": 0
+  },
   "gpt-rosalind-research": {
     "in": 5,
     "out": 25,
@@ -1714,5 +1762,23 @@
     "out": 10,
     "cacheRead": 0.1,
     "cacheWrite": 2.5
+  },
+  "claude-haiku-5-5": {
+    "in": 0.1,
+    "out": 0.5,
+    "cacheRead": 0.01,
+    "cacheWrite": 0.125
+  },
+  "gpt-rosalind-discovery": {
+    "in": 5,
+    "out": 25,
+    "cacheRead": 0.5,
+    "cacheWrite": 0
+  },
+  "gemini-robotics-er-2-preview": {
+    "in": 1,
+    "out": 5,
+    "cacheRead": 0.1,
+    "cacheWrite": 0
   }
 }

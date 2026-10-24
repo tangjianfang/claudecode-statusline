@@ -19,7 +19,7 @@ const { pathToFileURL } = require('url');
 // and that installed copy is exactly where a version marker matters most — npm never
 // refreshes it on its own, so a stale copy would otherwise be invisible. `npm run
 // check` verifies this stays in sync with package.json.
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 
 const ANSI = {
   reset: '\x1b[0m',
@@ -288,17 +288,37 @@ async function installStatusLine() {
   let changed = false;
 
   const currentCommand = settings.statusLine && settings.statusLine.command;
-  if (currentCommand === desiredCommand) {
+  // "Up to date" needs more than the command now: older installs predate the
+  // tuning fields (refreshInterval / hideVimModeIndicator), so re-offer the
+  // write when either is missing. Values the user chose for themselves are
+  // never overwritten — see the write below.
+  const mainTuned =
+    settings.statusLine &&
+    settings.statusLine.hideVimModeIndicator !== undefined &&
+    settings.statusLine.refreshInterval !== undefined;
+  if (currentCommand === desiredCommand && mainTuned) {
     console.log('statusLine config in settings.json is already up to date.');
   } else {
     let writeMain = true;
     if (currentCommand) {
       writeMain = await promptYesNo(
-        `settings.json already has a statusLine (${currentCommand}), replace it with ${desiredCommand}?`
+        `settings.json already has a statusLine (${currentCommand}), update it (command + tuning fields)?`
       );
     }
     if (writeMain) {
       settings.statusLine = { ...settings.statusLine, type: 'command', command: desiredCommand };
+      // Tuning fields, added only when absent (never override a user's choice):
+      // hideVimModeIndicator — this script renders vim mode itself (VIM:xxx),
+      //   so CC's built-in -- INSERT -- below the prompt would double it.
+      // refreshInterval — event-driven renders go quiet while the main session
+      //   idles waiting on subagents; a 5s tick keeps TPS age markers, countdowns
+      //   and subagent rows fresh through those gaps.
+      if (settings.statusLine.hideVimModeIndicator === undefined) {
+        settings.statusLine.hideVimModeIndicator = true;
+      }
+      if (settings.statusLine.refreshInterval === undefined) {
+        settings.statusLine.refreshInterval = 5;
+      }
       changed = true;
     } else {
       console.log('Update to statusLine cancelled.');
@@ -617,6 +637,15 @@ function renderSubagentStatusLine(data) {
   for (const task of tasks) {
     if (!task || !task.id) continue;
     const parts = [color(task.name || task.type || 'agent', ANSI.cyan)];
+    // Type badge (v2.1.293+ payload): distinguishes custom subagent types
+    // (code-reviewer, ...) from the name alone; hidden when it adds nothing.
+    if (
+      task.agentType &&
+      task.agentType !== 'local_agent' &&
+      (task.name || '').toLowerCase() !== task.agentType.toLowerCase()
+    ) {
+      parts.push(color(`[${task.agentType}]`, ANSI.dim));
+    }
     if (task.status) parts.push(color(task.status, ANSI.dim));
 
     // Live activity label — updates every refresh tick, and on builds where
@@ -888,10 +917,15 @@ process.stdin.on('end', () => {
 
   if (data.session_name) firstLineParts.push(color(`"${data.session_name}"`, ANSI.dim));
 
-  // Worktree sessions (v2.1.x): show which worktree you're in — the branch
-  // alone doesn't tell you, since every worktree has its own branch.
-  if (data.worktree && data.worktree.name) {
-    firstLineParts.push(color(`🌳wt:${data.worktree.name}`, ANSI.dim));
+  // Worktree marker: data.worktree covers v2.1.x worktree sessions only;
+  // workspace.git_worktree (v2.1.260+) also covers plain `git worktree add`
+  // checkouts the session merely runs inside. The branch alone doesn't tell
+  // you which worktree you're in — every worktree has its own branch.
+  const wtName =
+    (data.worktree && data.worktree.name) ||
+    (data.workspace && data.workspace.git_worktree);
+  if (wtName) {
+    firstLineParts.push(color(`🌳wt:${wtName}`, ANSI.dim));
   }
 
   // Agent sessions (--agent or agent settings): show the active agent.
@@ -956,6 +990,20 @@ process.stdin.on('end', () => {
     secondLineParts.push(
       color(`pc:${pct}%${ttlLabel}`, pct >= 80 ? ANSI.green : pct >= 50 ? ANSI.yellow : ANSI.red)
     );
+    // Diagnosed cause of the last miss (v2.1.260+): turns "why did the hit
+    // ratio drop" into a readable label. null until the first miss / when no
+    // cause was identified — render nothing then.
+    const MISS_CAUSES = {
+      tools_changed: 'tools',
+      system_prompt_changed: 'sysprompt',
+      ttl_expired_5m: 'ttl5m',
+      likely_server_side: 'server',
+    };
+    const lmc = pc.last_miss_cause;
+    if (lmc && Array.isArray(lmc.causes) && lmc.causes.length) {
+      const label = lmc.causes.map(c => MISS_CAUSES[c] || String(c)).join('/');
+      secondLineParts.push(color(`⚠${label}`, ANSI.yellow));
+    }
   }
 
   // Rate limits + mode flags append to the end of the second line, only when present.
@@ -974,9 +1022,29 @@ process.stdin.on('end', () => {
   if (sevenDayPct !== null) {
     secondLineParts.push(color(`7d:${sevenDayPct}%${formatUntil(sevenDay.resets_at)}`, colorForPercentage(sevenDayPct)));
   }
-  if (spendLimit && typeof spendLimit.used_percentage === 'number') {
-    const spendPct = Math.round(spendLimit.used_percentage);
-    secondLineParts.push(color(`sp:${spendPct}%`, colorForPercentage(spendPct)));
+  if (spendLimit) {
+    // Dollar amounts (v2.1.284+): gateway-computed estimates, optional even when
+    // spend_limit is present (absent under DISABLE_NONESSENTIAL_TRAFFIC) and can
+    // lag used_percentage by ~5min — prefer them for readability, fall back to %.
+    if (typeof spendLimit.used_usd === 'number' && typeof spendLimit.limit_usd === 'number') {
+      const usd = v => (Number.isInteger(v) ? String(v) : v.toFixed(2));
+      const period = { daily: 'd', weekly: 'w', monthly: 'mo' }[spendLimit.period] || '';
+      const pctRaw =
+        typeof spendLimit.used_percentage === 'number'
+          ? spendLimit.used_percentage
+          : spendLimit.limit_usd > 0
+            ? (spendLimit.used_usd / spendLimit.limit_usd) * 100
+            : null;
+      secondLineParts.push(
+        color(
+          `sp:$${usd(spendLimit.used_usd)}/$${usd(spendLimit.limit_usd)}${period}`,
+          pctRaw === null ? ANSI.dim : colorForPercentage(Math.round(pctRaw))
+        )
+      );
+    } else if (typeof spendLimit.used_percentage === 'number') {
+      const spendPct = Math.round(spendLimit.used_percentage);
+      secondLineParts.push(color(`sp:${spendPct}%`, colorForPercentage(spendPct)));
+    }
   }
 
   if (data.fast_mode) secondLineParts.push(color('⚡fast', ANSI.yellow));

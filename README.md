@@ -17,16 +17,16 @@ TPS:38.2 out:1.2k cache:15k pc:87%(5m) Σ↓120k ↑8.4k +120/-15 ~cost:$0.31 du
 |---|---|
 | `[model]` `📁` `🌿` | Model, cwd (clickable `file://` link), branch (clickable link to its GitHub / GitLab / Bitbucket page) |
 | `PR#123👀` / `MR#` | PR number + review state; GitLab merge requests render `MR#` |
-| `🌳wt:` / `🤖` | Worktree name / agent name (`--agent` sessions) |
+| `🌳wt:` / `🤖` | Worktree name (worktree sessions and plain linked worktrees) / agent name (`--agent` sessions) |
 | `ctx:42%/200k` | Context usage against the actual window size (green → yellow → red) |
 | `TPS:38.2` | Output tokens/sec of the last response; `(Xm ago)` once it's over 2 min stale |
 | `out:` `cache:` | Last response's output / cache-read tokens |
-| `pc:87%(5m)` | Prompt-cache hit ratio + TTL (`(cold)` while rebuilding) — every miss re-bills cache-write on the whole prefix |
+| `pc:87%(5m)` `⚠tools` | Prompt-cache hit ratio + TTL (`(cold)` while rebuilding) — every miss re-bills cache-write on the whole prefix; `⚠` names the diagnosed cause of the last miss (`tools` / `sysprompt` / `ttl5m` / `server`) |
 | `Σ↓ ↑` | Session-wide input/output token totals |
 | `+120/-15` | Lines added / removed |
 | `~cost:` | Self-computed cost (see below); `~cost?:` marks the untrusted client-estimate fallback |
 | `dur:` | Session duration |
-| `5h:` `7d:` `sp:` | Rate-limit / spend-limit usage, with a compact time-to-reset |
+| `5h:` `7d:` `sp:` | Rate-limit / spend-limit usage, with a compact time-to-reset; `sp:` shows `$used/$limit` dollars behind a gateway when available |
 | `⚡fast` `🧠think` `eff:` `VIM:` `style:` | Mode flags; the trailing `v2.x` is the Claude Code version, `ccsl2.x` the status line's own version (a stale install becomes visible) |
 
 Subagent rows — one line per task, real stats from the agent's own transcript when available (`TPS`), payload-derived fallback otherwise (`tok/s`):
