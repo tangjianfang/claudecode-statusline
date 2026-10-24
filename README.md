@@ -15,9 +15,9 @@ TPS:38.2 out:1.2k cache:15k pc:87%(5m) Σ↓120k ↑8.4k +120/-15 ~cost:$0.31 du
 
 | Segment | Meaning |
 |---|---|
-| `[model]` `📁` `🌿` | Model, cwd (clickable `file://` link), branch (clickable link to its GitHub / GitLab / Bitbucket page) |
+| `[model]` `📁` `🌿` `PR#` | Model, cwd (clickable `file://` link), branch (clickable link to its GitHub / GitLab / Bitbucket page), PR/MR number (clickable link to the PR page) |
 | `PR#123👀` / `MR#` | PR number + review state; GitLab merge requests render `MR#` |
-| `🌳wt:` / `🤖` | Worktree name (worktree sessions and plain linked worktrees) / agent name (`--agent` sessions) |
+| `🌳wt:` / `🤖` | Worktree name (worktree sessions and plain linked worktrees; clickable in worktree sessions) / agent name (`--agent` sessions) |
 | `ctx:42%/200k` | Context usage against the actual window size (green → yellow → red) |
 | `TPS:38.2` | Output tokens/sec of the last response; `(Xm ago)` once it's over 2 min stale |
 | `out:` `cache:` | Last response's output / cache-read tokens |
@@ -88,6 +88,7 @@ Claude Code pipes a JSON payload on stdin. Per-message token/timing data isn't i
 - **TPS describes the last response, not real-time decode** — the window includes network round-trips and time-to-first-token, and the line only re-runs when a new message completes. Add `"refreshInterval": 2` to the statusLine config for more frequent refresh.
 - **`~cost:` is an estimate** — as accurate as your `pricing.json` rates.
 - **Subagent stats depend on the agent transcript** — without it, rows fall back to the payload's sparsely-populated `tokenCount`/`tokenSamples`; absent fields are omitted rather than shown as zeros.
+- **Narrow terminals** — when a line exceeds `COLUMNS`, the least-essential segments drop off (version markers → mode flags → …); model/dir and TPS/cost always stay. Subagent rows shrink their activity label instead of wrapping.
 - **`pc:` / `5h:` / `7d:` / `sp:` need gateway data** — they appear only after the first API response, and may never appear on third-party `ANTHROPIC_BASE_URL` gateways.
 - **Branch links cover GitHub / GitLab / Bitbucket** — self-hosted Git renders plain text.
 

@@ -19,7 +19,7 @@ const { pathToFileURL } = require('url');
 // and that installed copy is exactly where a version marker matters most — npm never
 // refreshes it on its own, so a stale copy would otherwise be invisible. `npm run
 // check` verifies this stays in sync with package.json.
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 
 const ANSI = {
   reset: '\x1b[0m',
@@ -160,6 +160,40 @@ function osc8(text, url) {
 
 function osc8FileLink(text, targetPath) {
   return osc8(text, pathToFileURL(targetPath).href);
+}
+
+// Visible text of a rendered segment: OSC-8 hyperlinks and CSI color codes
+// carry no terminal columns. (A 2-cell emoji like 🌳 still counts as 1 here —
+// the separator+margin slack below absorbs that approximation.)
+function stripAnsi(str) {
+  return String(str)
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
+}
+
+// Width-aware join: while the line overflows the terminal, drop the least
+// essential segment (first regex in dropOrder matching a segment's visible
+// text) instead of letting the terminal wrap mid-segment. Segments matching no
+// dropOrder entry are core content and never dropped. columns=null (manual
+// runs without COLUMNS) keeps everything.
+function fitLine(parts, columns, dropOrder) {
+  if (!columns) return parts.join(' ');
+  const width = () =>
+    parts.reduce((a, p) => a + stripAnsi(p).length, 0) + Math.max(0, parts.length - 1);
+  let guard = parts.length;
+  while (width() > columns && guard-- > 0) {
+    let dropped = false;
+    for (const re of dropOrder) {
+      const i = parts.findIndex(p => re.test(stripAnsi(p)));
+      if (i !== -1) {
+        parts.splice(i, 1);
+        dropped = true;
+        break;
+      }
+    }
+    if (!dropped) break;
+  }
+  return parts.join(' ');
 }
 
 // Builds a URL to the branch's browse page on the repo's host, from the
@@ -651,8 +685,10 @@ function renderSubagentStatusLine(data) {
     // Live activity label — updates every refresh tick, and on builds where
     // tokenCount stays 0 it is the strongest "is it alive" signal.
     const activity = task.label || task.description || '';
+    let labelIdx = -1;
     if (activity) {
       const shown = activity.length > 48 ? activity.slice(0, 47) + '…' : activity;
+      labelIdx = parts.length;
       parts.push(color(shown, ANSI.dim));
     }
 
@@ -722,6 +758,22 @@ function renderSubagentStatusLine(data) {
     }
 
     if (task.effort) parts.push(color(`eff:${task.effort}`, ANSI.dim));
+
+    // Fit to the payload's `columns` (usable row width): shrink the activity
+    // label instead of letting the row wrap — the label is decorative, the
+    // stats are the point. Dropped entirely below a 4-col budget.
+    if (labelIdx >= 0 && typeof data.columns === 'number' && data.columns >= 40) {
+      const others = parts.reduce(
+        (a, p, i) => (i === labelIdx ? a : a + stripAnsi(p).length),
+        0
+      );
+      const budget = data.columns - others - parts.length; // separators + margin
+      if (budget < 4) {
+        parts.splice(labelIdx, 1);
+      } else if (stripAnsi(parts[labelIdx]).length > budget) {
+        parts[labelIdx] = color(activity.slice(0, Math.max(1, budget - 1)) + '…', ANSI.dim);
+      }
+    }
 
     lines.push(JSON.stringify({ id: task.id, content: parts.join(' ') }));
   }
@@ -912,7 +964,8 @@ process.stdin.on('end', () => {
   if (data.pr && typeof data.pr.number === 'number') {
     const reviewIcon = { approved: '✅', pending: '👀', changes_requested: '❗', draft: '📝' }[data.pr.review_state] || '';
     const prKind = data.pr.kind === 'mr' ? 'MR' : 'PR';
-    firstLineParts.push(color(`${prKind}#${data.pr.number}${reviewIcon}`, ANSI.dim));
+    const prLabel = `${prKind}#${data.pr.number}${reviewIcon}`;
+    firstLineParts.push(color(data.pr.url ? osc8(prLabel, data.pr.url) : prLabel, ANSI.dim));
   }
 
   if (data.session_name) firstLineParts.push(color(`"${data.session_name}"`, ANSI.dim));
@@ -925,7 +978,14 @@ process.stdin.on('end', () => {
     (data.worktree && data.worktree.name) ||
     (data.workspace && data.workspace.git_worktree);
   if (wtName) {
-    firstLineParts.push(color(`🌳wt:${wtName}`, ANSI.dim));
+    const wtLabel = `🌳wt:${wtName}`;
+    // Clickable only for worktree sessions, which carry a path; the plain
+    // git_worktree fallback has no path in the payload.
+    const linked =
+      data.worktree && data.worktree.path
+        ? osc8FileLink(wtLabel, data.worktree.path)
+        : wtLabel;
+    firstLineParts.push(color(linked, ANSI.dim));
   }
 
   // Agent sessions (--agent or agent settings): show the active agent.
@@ -1059,8 +1119,21 @@ process.stdin.on('end', () => {
   // ours — this makes a stale ~/.claude/statusline.js copy visible at a glance.
   secondLineParts.push(color(`ccsl${VERSION}`, ANSI.dim));
 
-  const lines = [firstLineParts.join(' ')];
-  if (secondLineParts.length) lines.push(secondLineParts.join(' '));
+  // Claude Code sets COLUMNS before invoking the script (tput can't work —
+  // output is captured). Manual runs without it keep every segment.
+  const termColumns = (() => {
+    const c = parseInt(process.env.COLUMNS, 10);
+    return c >= 20 && c <= 2000 ? c : null;
+  })();
+  // Narrow-terminal drop order, least essential first; segments absent from
+  // a list (model/dir on line 1, TPS/cost on line 2) are never dropped.
+  const LINE1_DROP = [/^🌳wt:/, /^🤖/, /^"/, /^(PR|MR)#/, /^🌿/];
+  const LINE2_DROP = [
+    /^ccsl/, /^v\d/, /^style:/, /^VIM:/, /^eff:/, /^⚠/, /^🧠/, /^⚡/,
+    /^dur:/, /^7d:/, /^sp:/, /^5h:/, /^\+/, /^Σ/, /^cache:/, /^out:/, /^pc:/,
+  ];
+  const lines = [fitLine(firstLineParts, termColumns, LINE1_DROP)];
+  if (secondLineParts.length) lines.push(fitLine(secondLineParts, termColumns, LINE2_DROP));
 
   process.stdout.write(lines.join('\n'));
 
