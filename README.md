@@ -83,6 +83,32 @@ pricing-updater --out pricing.json --overwrite   # maintainer: refresh the repo'
 
 Claude Code pipes a JSON payload on stdin. Per-message token/timing data isn't in it, so the script re-parses the JSONL transcript at `transcript_path`, pairing each assistant message's `usage.output_tokens` with the preceding user-message timestamp to derive TPS, and accumulating session-wide totals (sidechain entries feed the Σ totals but not the main-line figures). Subagent stats come from `<project dir>/<session id>/subagents/agent-<task id>.jsonl`, parsed the same way. To see what your build actually sends: `touch ~/.claude/statusline-debug`, reproduce, then read `~/.claude/statusline-payloads.log`.
 
+## Companion mod (quick buttons + usage pane)
+
+v3.0.0 ships a Claude Code **mod** alongside the status line. It runs inside Claude Code, so it can do things a status-line subprocess can't:
+
+- **Hotkeyed buttons above the prompt** — `[u]sage` / `[c]ost` open a usage pane instantly, even while Claude is working
+- **`/ccsl-usage` command** — opens the pane; runs with zero model turns
+- **Per-request usage pane** — a sparkline of output tokens per request plus cumulative totals, recorded directly from each model request (no transcript parsing)
+
+Install/update it with the same command as the status line — `cc-statusline --install` offers to copy `mod/` to `~/.claude/skills/cc-statusline-mod/`, which Claude Code loads at every startup. Preview it for one session instead with:
+
+```bash
+claude --plugin-dir /path/to/node_modules/@tangjianfang/claudecode-statusline/mod   # or the repo's mod/
+```
+
+Bind the command to a key (optional) in `~/.claude/keybindings.json`:
+
+```json
+{
+  "bindings": [
+    { "context": "Chat", "bindings": { "meta+u": "command:ccsl-usage" } }
+  ]
+}
+```
+
+Remove it by deleting `~/.claude/skills/cc-statusline-mod/`. The mod never runs when `disableAllHooks` is true (that flag also disables custom status lines).
+
 ## Limitations
 
 - **TPS describes the last response, not real-time decode** — the window includes network round-trips and time-to-first-token, and the line only re-runs when a new message completes. Add `"refreshInterval": 2` to the statusLine config for more frequent refresh.
@@ -91,6 +117,7 @@ Claude Code pipes a JSON payload on stdin. Per-message token/timing data isn't i
 - **Narrow terminals** — when a line exceeds `COLUMNS`, the least-essential segments drop off (version markers → mode flags → …); model/dir and TPS/cost always stay. Subagent rows shrink their activity label instead of wrapping.
 - **`pc:` / `5h:` / `7d:` / `sp:` need gateway data** — they appear only after the first API response, and may never appear on third-party `ANTHROPIC_BASE_URL` gateways.
 - **Branch links cover GitHub / GitLab / Bitbucket** — self-hosted Git renders plain text.
+- **The companion mod rides on a young API** — every call is feature-checked and failure-tolerant, but a Claude Code update can still change what it draws. The status line never depends on it.
 
 ## Releasing a new version (maintainer)
 

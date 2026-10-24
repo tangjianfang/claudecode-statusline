@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Two independent single-file Node.js tools for Claude Code, no dependencies beyond Node's built-in modules (`fs`, `path`, `os`, `readline`, `child_process`, `url`, `https`) and no build step, package manager, or test suite — all are meant to be run directly with `node`.
+Two independent single-file Node.js tools for Claude Code **plus a companion mod plugin** (`mod/`, v3.0.0), no dependencies beyond Node's built-in modules (`fs`, `path`, `os`, `readline`, `child_process`, `url`, `https`) and no build step, package manager, or test suite — everything is meant to be run directly with `node` (the mod is plain ESM, no build).
 
 - **`statusline.js`**: implements both a main status line and a subagent status line.
 - **`pricing-updater.js`**: fetches live model pricing from the community-maintained litellm price table and writes/merges `~/.claude/pricing.json` (or a chosen `--out` path — the maintainer uses `--out pricing.json --overwrite` to refresh the repo's shipped copy), which `statusline.js` reads to self-compute session cost. Only this tool touches the network; the status line itself never does.
+- **`mod/`** (v3.0.0): the companion mod — a Claude Code plugin (`cc-statusline-mod`) that runs in-process. It records per-request usage straight from `turn.step` events (no transcript parsing), draws hotkeyed quick-action buttons in the `AbovePrompt` band, and serves a `/ccsl-usage` command + usage pane (sparkline + totals). Every mods-API call in `mod/hooks/register.mjs` is feature-checked and wrapped in `safe()` — the API is young, so anything missing degrades to "not shown" rather than breaking a session. `--install` copies `mod/` to `~/.claude/skills/cc-statusline-mod/` (Claude Code loads skills-directory plugins at startup — the no-marketplace distribution path); one-session preview: `claude --plugin-dir mod`.
 
 The v1.x `loopctl.js` (Stop-hook auto-continue loop) was removed in 2.0.0 — Claude Code has native `/goal`. `scripts/postinstall.js` still cleans up its leftovers (Stop hook registration, `~/.claude/loopctl.js`) on upgrade.
 
@@ -20,6 +21,7 @@ There is no build/lint/test tooling in this repo. Useful commands:
 - Install/update the status line as both the active `statusLine` and `subagentStatusLine`: `node statusline.js --install` (copies itself to `~/.claude/statusline.js` and updates both fields in `~/.claude/settings.json`, prompting independently before overwriting either existing file/setting; when writing the `statusLine` object it also adds `hideVimModeIndicator: true` and `refreshInterval: 5` if absent — the script renders vim mode itself so CC's `-- INSERT --` would double it, and a periodic tick keeps renders fresh while the session idles on subagents; user-set values are never overwritten) — same thing via `install.bat` on Windows, `install.sh` on macOS/Linux, or `npm run install`
 - Refresh pricing: `npm run update-pricing` (merge into `~/.claude/pricing.json`) or `node pricing-updater.js --out pricing.json --overwrite` (maintainer: refresh the repo's shipped copy). A bare `pricing-updater` run IS the default merge — this was fixed in 2.0.0 (it used to print help, contradicting the docs and the npm script).
 - Simulate renders: `npm run demo` (empty payload) / `npm run demo:subagent` (mock subagent rows)
+- Try the companion mod for one session without installing it: `claude --plugin-dir mod` (band buttons, `/ccsl-usage` pane)
 - Quick syntax check: `npm run check` (runs `node --check` on all scripts, then `scripts/check-version.js` — verifies statusline.js's embedded `VERSION` matches package.json; the const is embedded because the `--install` copy at `~/.claude/statusline.js` has no package.json beside it)
 
 ## Architecture

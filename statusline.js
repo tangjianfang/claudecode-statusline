@@ -19,7 +19,7 @@ const { pathToFileURL } = require('url');
 // and that installed copy is exactly where a version marker matters most — npm never
 // refreshes it on its own, so a stale copy would otherwise be invisible. `npm run
 // check` verifies this stays in sync with package.json.
-const VERSION = '2.3.0';
+const VERSION = '3.0.0';
 
 const ANSI = {
   reset: '\x1b[0m',
@@ -264,6 +264,38 @@ function promptYesNo(question) {
   });
 }
 
+// Recursive copy + identity check for the companion mod directory (v3.0.0).
+// Byte comparison (not mtimes) — the whole mod is a handful of small files.
+function copyDirRecursive(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, ent.name);
+    const d = path.join(dest, ent.name);
+    if (ent.isDirectory()) copyDirRecursive(s, d);
+    else fs.copyFileSync(s, d);
+  }
+}
+
+function dirIdentical(a, b) {
+  try {
+    const names = d =>
+      fs.readdirSync(d, { withFileTypes: true }).map(e => e.name + (e.isDirectory() ? '/' : '')).sort().join(',');
+    if (names(a) !== names(b)) return false;
+    for (const ent of fs.readdirSync(a, { withFileTypes: true })) {
+      const pa = path.join(a, ent.name);
+      const pb = path.join(b, ent.name);
+      if (ent.isDirectory()) {
+        if (!dirIdentical(pa, pb)) return false;
+      } else if (fs.readFileSync(pa, 'utf8') !== fs.readFileSync(pb, 'utf8')) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function installStatusLine() {
   const claudeDir = path.join(os.homedir(), '.claude');
   const targetScript = path.join(claudeDir, 'statusline.js');
@@ -380,6 +412,34 @@ async function installStatusLine() {
   if (changed) {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
     console.log(`Updated ${settingsPath}`);
+  }
+
+  // Companion mod (v3.0.0): quick-action band + usage pane, shipped in mod/.
+  // Claude Code loads a plugin directory placed under ~/.claude/skills/ at
+  // every startup (the no-marketplace path from the plugin docs). Skipped
+  // quietly when the running copy has no mod/ beside it (e.g. a standalone
+  // statusline.js someone copied by hand).
+  const modSrc = path.join(__dirname, 'mod');
+  if (fs.existsSync(path.join(modSrc, '.claude-plugin', 'plugin.json'))) {
+    const modDest = path.join(claudeDir, 'skills', 'cc-statusline-mod');
+    if (fs.existsSync(modDest) && dirIdentical(modSrc, modDest)) {
+      console.log(`Companion mod already up to date (${modDest}).`);
+    } else {
+      let go = AUTO_YES;
+      if (!go) {
+        go = await promptYesNo(
+          fs.existsSync(modDest)
+            ? `Update the companion mod at ${modDest}?`
+            : `Also install the companion mod (quick buttons + usage pane) to ${modDest}? It loads at every Claude Code startup.`
+        );
+      }
+      if (go) {
+        copyDirRecursive(modSrc, modDest);
+        console.log(`Installed companion mod to ${modDest} (restart Claude Code to load it)`);
+      } else {
+        console.log('Companion mod skipped (re-run --install anytime to add it).');
+      }
+    }
   }
 }
 
