@@ -87,10 +87,11 @@ Claude Code pipes a JSON payload on stdin. Per-message token/timing data isn't i
 
 v3.0.0 ships a Claude Code **mod** alongside the status line. It runs inside Claude Code, so it can do things a status-line subprocess can't:
 
-- **Hotkeyed buttons above the prompt** — `[u]sage` / `[c]ost` open a usage pane instantly, even while Claude is working
+- **One toggle above the prompt** — `[m] ☰` opens the buttons pane; press again (or Esc) to close
+- **Quick-action buttons pane** — every configured button grouped by type (panes / prompts / links / commands), each with a hotkey while the pane holds focus; prompt buttons fill or send a prompt, URL buttons open the browser, command buttons run a host command and toast the result
 - **`/ccsl-usage` command** — opens the pane; runs with zero model turns
 - **Per-request usage pane** — a sparkline of output tokens per request plus cumulative totals, recorded directly from each model request (no transcript parsing)
-- **Custom buttons** — edit `~/.claude/ccsl-buttons.json` (auto-created with examples) to add your own: open panes, insert or send prompts, open URLs, or run host commands. `/ccsl-buttons` reloads it
+- **Custom buttons** — edit `~/.claude/ccsl-buttons.json` (auto-created with a template of common panes, prompts, links and commands) to add your own: open panes, insert or send prompts, open URLs, or run host commands. Optional `group` gives a button its own section; `toggle` restyles the band button. `/ccsl-buttons` reloads it
 
 Install/update it with the same command as the status line — `cc-statusline --install` offers to copy `mod/` to `~/.claude/skills/cc-statusline-mod/`, which Claude Code loads at every startup. Preview it for one session instead with:
 
