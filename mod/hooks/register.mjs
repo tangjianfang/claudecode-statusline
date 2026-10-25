@@ -3,31 +3,35 @@
 // Runs INSIDE Claude Code (a plugin "mod"), unlike statusline.js which is a
 // subprocess. That buys two things the status line can't do:
 //   * a single toggle button above the prompt (the AbovePrompt band) that
-//     opens a launcher pane of quick-action buttons, each with its own hotkey,
+//     opens a tabbed launcher of quick-action buttons, each with its hotkey,
 //   * direct sight of every model request via `turn.step`, so usage stats
 //     arrive with zero transcript parsing.
 //
-// The launcher: one action per line, `hotkey: label` (plain buttons, the
-// engine's survey idiom), grouped by action type under dim headers — usable
-// at any terminal width. If the engine won't place the pane (panes opened
-// outside the person's press dispatch wait undrawn below 144 columns, and
-// open() then answers { isPlaced: false, reason }), the same sections expand
-// INLINE in the band instead — the launcher is reachable at any width, and
-// the engine's reason is toasted rather than swallowed.
+// The launcher is TABBED: a row of tab markers on top, one tab's buttons in
+// the body (`hotkey: label`, one plain button per line — the survey idiom).
+// The default tab is 快捷 (quick switches); the others open on click. Tabs
+// map to action types: slash/pane → 快捷, prompt → 提示词, url → 链接 (drawn
+// bookmark-style: alias + dim address), run → 命令 (result rendered inline
+// below the buttons once it lands); "group" names a custom tab. If the engine
+// won't place the pane (opens outside the person's press dispatch wait
+// undrawn below 144 columns; open() then answers { isPlaced: false, reason }),
+// the same tab bar + current tab expand INLINE in the band — reachable at any
+// width, the engine's reason toasted rather than swallowed.
 //
 // Custom buttons: ~/.claude/ccsl-buttons.json (auto-created with examples on
 // first load; /ccsl-buttons reloads it). The band carries only the toggle
-// (restyled via "toggle"); everything else lives in the launcher, its
-// sections auto-grouped by action type — panes, prompts, links, commands —
-// with an optional "group": "name" field moving a button to its own section.
-// Each button is one of:
+// (restyled via "toggle"). Each button is one of:
 //   { label, hotkey, pane:   "ccsl-usage" }                  open a mod pane
+//   { label, hotkey, slash:  "fast" }        submit "/fast" (a mode switch —
+//                                            permissions opens CC's dialog, the
+//                                            API has no mode setter yet)
 //   { label, hotkey, prompt: "text", submit: false }         fill the prompt
 //   { label, hotkey, prompt: "text", submit: true }          send immediately
 //   { label, hotkey, url:    "https://..." }                 open in browser
 //   { label, hotkey, run:    ["npm", "test"] }               host command
-// Prompt buttons close the launcher first — a picked prompt means back to the
-// conversation; the other kinds keep it open.
+//   { label, hotkey, ..., group: "name" }                    own tab
+// Slash and prompt buttons close the launcher first — a picked action means
+// back to the conversation; the other kinds keep it open.
 //
 // API discipline (learned from Claude Code's module validator + runtime):
 //   * $ nouns ($.store, $.ui, $.command, $.fs, $.process, $.prompt) must be
@@ -63,6 +67,12 @@ let toggle = null;
 // the band-embedded fallback used when the engine won't place the pane.
 let paneUp = false;
 let inlineUp = false;
+
+// Which launcher tab is open (null = the first); null-safe on reloads.
+let activeTab = null;
+
+// Last finished host command, rendered inline under the 命令 tab.
+let lastRun = null;
 
 // Run fn, swallow any throw, return fallback. Mods must never break a turn.
 async function safe(fn, fallback) {
@@ -122,7 +132,8 @@ function spark(vals) {
 function defaultButtons() {
   return [
     { label: 'usage', hotkey: 'u', pane: PANE },
-    { label: 'tokens', hotkey: 'c', pane: PANE },
+    { label: '快速模式', hotkey: 'f', slash: 'fast' },
+    { label: '权限设置', hotkey: 'p', slash: 'permissions' },
   ];
 }
 
@@ -135,11 +146,12 @@ function defaultToggle() {
 function configTemplate() {
   return `${JSON.stringify(
     {
-      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the launcher. Actions: pane=<pane id> | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Optional group=<name> overrides the type section; toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus. Reload with /ccsl-buttons.',
+      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the tabbed launcher. Actions: pane=<pane id> | slash=<command> (submits /<command>; permissions opens CC dialog — no mode setter API yet) | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Tabs by type: slash/pane=快捷 prompt=提示词 url=链接 run=命令; group=<name> gives a button its own tab. toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus. Reload with /ccsl-buttons.',
       toggle: { label: '☰', hotkey: 'm' },
       buttons: [
         { label: 'usage', hotkey: 'u', pane: PANE },
-        { label: 'tokens', hotkey: 'c', pane: PANE },
+        { label: '快速模式', hotkey: 'f', slash: 'fast' },
+        { label: '权限设置', hotkey: 'p', slash: 'permissions' },
         { label: '测试并修复', hotkey: 't', prompt: 'Run the full test suite and fix any failures.', submit: true },
         { label: '审查改动', hotkey: 'r', prompt: 'Review the current diff for correctness bugs and suggest fixes.' },
         { label: '解释代码', hotkey: 'e', prompt: 'Explain the key parts of this codebase.' },
@@ -147,7 +159,7 @@ function configTemplate() {
         { label: '仓库', hotkey: 'o', url: 'https://github.com/tangjianfang/claudecode-statusline' },
         { label: '议题', hotkey: 'i', url: 'https://github.com/tangjianfang/claudecode-statusline/issues' },
         { label: '语法检查', hotkey: 'k', run: ['npm', 'run', 'check'] },
-        { label: '更新价格', hotkey: 'p', run: ['npm', 'run', 'update-pricing'] },
+        { label: '更新价格', hotkey: 'j', run: ['npm', 'run', 'update-pricing'] },
         { label: '其他命令', hotkey: 'x', group: 'misc', run: ['node', '--version'] },
       ],
     },
@@ -163,7 +175,11 @@ function normalizeButton(b) {
   const out = { label: b.label.slice(0, 24) };
   if (typeof b.hotkey === 'string' && /^[0-9a-z]$/.test(b.hotkey)) out.hotkey = b.hotkey;
   if (typeof b.pane === 'string' && b.pane) out.pane = b.pane;
-  else if (typeof b.prompt === 'string' && b.prompt) {
+  else if (typeof b.slash === 'string') {
+    const s = b.slash.replace(/^\//, '').toLowerCase();
+    if (!/^[a-z0-9-]+$/.test(s)) return null;
+    out.slash = s;
+  } else if (typeof b.prompt === 'string' && b.prompt) {
     out.prompt = b.prompt;
     out.submit = b.submit === true;
   } else if (typeof b.url === 'string' && /^https?:\/\//.test(b.url)) out.url = b.url;
@@ -193,31 +209,52 @@ function applyConfigText(text) {
     : [];
   buttons = list.length ? list : defaultButtons();
   toggle = normalizeToggle(parsed.toggle);
+  activeTab = null; // re-resolve against the new tabs
   return buttons.length;
 }
 
-// Which launcher section a button lands in: its action type, or its group.
-function sectionKey(b) {
+// Which launcher tab a button lands in: slash/pane → quick switches, the
+// rest by action type, a custom group naming its own tab.
+function tabKey(b) {
   if (b.group) return b.group;
-  if (b.pane) return 'pane';
+  if (b.slash || b.pane) return 'quick';
   if (typeof b.prompt === 'string') return 'prompt';
   if (b.url) return 'url';
   return 'run';
 }
 
-// Section order: the four action types in fixed order, custom groups after,
-// in first-appearance order.
-const SECTION_TITLES = new Map([
-  ['pane', '⌨ 面板'],
-  ['prompt', '✏ 提示词'],
-  ['url', '🔗 链接'],
-  ['run', '$ 命令'],
+// Tab order: the four built-ins in fixed order, custom groups after, in
+// first-appearance order.
+const TAB_TITLES = new Map([
+  ['quick', '快捷'],
+  ['prompt', '提示词'],
+  ['url', '链接'],
+  ['run', '命令'],
 ]);
-function sectionOrder(list) {
-  const kinds = [...SECTION_TITLES.keys()].filter(k => list.some(b => !b.group && sectionKey(b) === k));
+function tabModel() {
+  const list = buttons || defaultButtons();
+  const builtins = [...TAB_TITLES.keys()].filter(k => list.some(b => tabKey(b) === k));
   const custom = [];
-  for (const b of list) if (b.group && !custom.includes(b.group)) custom.push(b.group);
-  return [...kinds, ...custom];
+  for (const b of list) {
+    const k = tabKey(b);
+    if (b.group && !custom.includes(k)) custom.push(k);
+  }
+  return [...builtins, ...custom].map(key => ({
+    key,
+    title: TAB_TITLES.get(key) || `◆ ${key}`,
+    items: list.filter(b => tabKey(b) === key),
+  }));
+}
+
+function currentTab() {
+  const tabs = tabModel();
+  return tabs.find(t => t.key === activeTab) || tabs[0];
+}
+
+// A bookmark-style address: no protocol, capped.
+function displayUrl(url) {
+  const bare = url.replace(/^https?:\/\//, '');
+  return bare.length > 42 ? bare.slice(0, 41) + '…' : bare;
 }
 
 function browserArgv(url) {
@@ -226,37 +263,12 @@ function browserArgv(url) {
   return ['xdg-open', url];
 }
 
-// One button's visible label: the two built-ins carry live totals; a
-// send-now prompt says so; everything else shows its configured label as-is.
-function buttonLabel(b, t) {
-  if (b.pane === PANE) {
-    if (b.hotkey === 'u') return `usage ${fmt(t.out)}o`;
-    if (b.hotkey === 'c') return `tokens ${fmt(t.in + t.out + t.cacheR + t.cacheW)}`;
-  }
-  if (typeof b.prompt === 'string' && b.submit) return `${b.label}(send)`;
-  return b.label;
-}
-
-// The launcher's sections as plain data: { key, title, items: [{b, label}] }.
-// Pure — the ELEMENT tree is built inside each hook, where $ lives ($ nouns
-// must never reach a helper; only the hook's own scope may call them).
-function sectionModel() {
-  const list = buttons || defaultButtons();
-  const t = totals();
-  return sectionOrder(list).map(key => ({
-    key,
-    title: SECTION_TITLES.get(key) || `◆ ${key}`,
-    items: list.filter(b => sectionKey(b) === key).map(b => ({ b, label: buttonLabel(b, t) })),
-  }));
-}
-
-// Content height the pane wants: per section a header + its buttons, blank
-// lines between, one hint line, a line of slack.
+// Content height the pane wants: tab row + the open tab's buttons, an inline
+// run result, the hint line, a line of slack.
 function launcherRows() {
-  return Math.max(
-    6,
-    Math.min(30, sectionModel().reduce((n, s) => n + 1 + s.items.length, 0) + 2)
-  );
+  const tab = currentTab();
+  const n = 1 + tab.items.length + (tab.key === 'run' && lastRun ? 1 : 0) + 1;
+  return Math.max(6, Math.min(30, n + 1));
 }
 
 export function register(on) {
@@ -341,13 +353,77 @@ export function register(on) {
     return { text: msg };
   }).catch(() => {});
 
-  // The launcher pane: the sections + hint. Answering (no next) means we own
-  // this body entirely. The press factory lives INSIDE the hook so every $
-  // call stays lexically in the handler that bound $.
+  // The launcher body (tab bar + the open tab), shared shape by the pane and
+  // the band fallback. The press factory lives INSIDE each hook so every $
+  // call stays lexically in the handler that bound $; this helper only lays
+  // out what it's handed ($ nouns never reach it).
+  function launcherKids(ui, pressTab, pressButton, keyPrefix) {
+    const tabs = tabModel();
+    const cur = currentTab();
+    const kids = [
+      ui.Box({
+        key: `${keyPrefix}-tabs`,
+        flexDirection: 'row',
+        children: tabs.flatMap((t, i) => {
+          const parts = t.key === cur.key
+            ? [ui.Text({ key: `${keyPrefix}-tabcur-${t.key}`, children: '▸ ' })]
+            : i
+              ? [ui.Text({ key: `${keyPrefix}-tabgap-${i}`, dimColor: true, children: '  ' })]
+              : [];
+          parts.push(
+            ui.Button({
+              key: `ccsl-tab-${t.key}`,
+              label: t.title,
+              dimColor: t.key !== cur.key,
+              plain: true,
+              onPress: () => pressTab(t.key),
+            })
+          );
+          return parts;
+        }),
+      }),
+    ];
+    for (const b of cur.items) {
+      const common = {
+        key: `ccsl-btn-${b.hotkey || b.label}`,
+        hotkey: b.hotkey,
+        plain: true,
+        onPress: pressButton(b),
+      };
+      kids.push(
+        b.url
+          ? ui.Button({
+              ...common,
+              children: [
+                b.label,
+                ui.Text({ key: `ccsl-url-${common.key}`, dimColor: true, children: `  ${displayUrl(b.url)}` }),
+              ],
+            })
+          : ui.Button({ ...common, label: b.label })
+      );
+    }
+    if (cur.key === 'run' && lastRun) {
+      kids.push(
+        ui.Text({
+          key: `${keyPrefix}-lastrun`,
+          dimColor: true,
+          children: `${lastRun.label}: exit ${lastRun.exitCode}${lastRun.tail ? ` · ${lastRun.tail}` : ''}`,
+        })
+      );
+    }
+    return kids;
+  }
+
+  // The launcher pane: tab bar + the open tab + hint. Answering (no next)
+  // means we own this body entirely.
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     if (e.requestId !== BUTTONS_PANE) return next(e);
     const ui = await safe(async () => $.ui.resolve(e), null);
     if (!ui || !ui.Box || !ui.Button || !ui.Text) return next(e);
+    const pressTab = key => {
+      activeTab = key;
+      $.ui.invalidate('ui.render');
+    };
     const pressButton = b => () => {
       // Dispatch by action type. Every $ call happens right here (the
       // $-noun discipline), and every path toasts — silent failures were
@@ -359,9 +435,20 @@ export function register(on) {
             .run(browserArgv(b.url))
             .then(() => {})
             .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+        } else if (typeof b.slash === 'string') {
+          // A mode switch means back to the conversation: collapse whichever
+          // launcher form is up, then submit the command.
+          if (inlineUp) {
+            inlineUp = false;
+            $.ui.invalidate('ui.render');
+          }
+          if (paneUp) {
+            paneUp = false;
+            $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+          }
+          $.prompt.submit({ text: `/${b.slash}` });
+          $.ui.toast(`已提交 /${b.slash}`);
         } else if (typeof b.prompt === 'string') {
-          // Picked a prompt → back to the conversation: collapse whichever
-          // launcher form is up.
           if (inlineUp) {
             inlineUp = false;
             $.ui.invalidate('ui.render');
@@ -385,9 +472,15 @@ export function register(on) {
             .run(b.run, { timeoutMs: 600000 })
             .then(r => {
               const tail = ((r.stdout || '') + (r.stderr || '')).trim().slice(-160);
-              $.ui.toast(`${b.label}: exit ${r.exitCode}${tail ? ` · ${tail}` : ''}`);
+              lastRun = { label: b.label, exitCode: r.exitCode, tail };
+              $.ui.invalidate('ui.render');
+              $.ui.toast(`${b.label}: exit ${r.exitCode}`);
             })
-            .catch(err => $.ui.toast(`${b.label}: ${err && err.message}`));
+            .catch(err => {
+              lastRun = { label: b.label, exitCode: '?', tail: err && err.message };
+              $.ui.invalidate('ui.render');
+              $.ui.toast(`${b.label}: ${err && err.message}`);
+            });
         } else {
           const paneId = b.pane || PANE;
           $.ui
@@ -399,29 +492,7 @@ export function register(on) {
         $.ui.toast(`ccsl: ${err && err.message}`);
       }
     };
-    const sections = sectionModel().map(s =>
-      ui.Box({
-        key: `ccsl-sec-${s.key}`,
-        flexDirection: 'column',
-        children: [
-          ui.Text({ key: `ccsl-sec-h-${s.key}`, dimColor: true, children: s.title }),
-          ...s.items.map(it =>
-            ui.Button({
-              key: `ccsl-btn-${it.b.hotkey || it.b.label}`,
-              label: it.label,
-              hotkey: it.b.hotkey,
-              plain: true,
-              onPress: pressButton(it.b),
-            })
-          ),
-        ],
-      })
-    );
-    const kids = [];
-    sections.forEach((s, i) => {
-      if (i) kids.push(ui.Text({ key: `ccsl-gap-${i}`, children: ' ' }));
-      kids.push(s);
-    });
+    const kids = launcherKids(ui, pressTab, pressButton, 'ccsl-pane');
     kids.push(
       ui.Text({
         key: 'ccsl-btns-hint',
@@ -492,9 +563,13 @@ export function register(on) {
     });
     const kids = [ui.Box({ key: 'ccsl-band-row', flexDirection: 'row', children: [toggleBtn] })];
     if (inlineUp) {
-      // The inline fallback mirrors the pane's launcher — same sections, same
-      // dispatch, duplicated here because the press factory must bind this
+      // The inline fallback mirrors the pane's launcher — same tab bar, same
+      // dispatch, duplicated here because the press factories must bind this
       // hook's $ (helpers never receive $ nouns).
+      const pressTab = key => {
+        activeTab = key;
+        $.ui.invalidate('ui.render');
+      };
       const pressButton = b => () => {
         try {
           if (b.url) {
@@ -503,6 +578,17 @@ export function register(on) {
               .run(browserArgv(b.url))
               .then(() => {})
               .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+          } else if (typeof b.slash === 'string') {
+            if (inlineUp) {
+              inlineUp = false;
+              $.ui.invalidate('ui.render');
+            }
+            if (paneUp) {
+              paneUp = false;
+              $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+            }
+            $.prompt.submit({ text: `/${b.slash}` });
+            $.ui.toast(`已提交 /${b.slash}`);
           } else if (typeof b.prompt === 'string') {
             if (inlineUp) {
               inlineUp = false;
@@ -527,9 +613,15 @@ export function register(on) {
               .run(b.run, { timeoutMs: 600000 })
               .then(r => {
                 const tail = ((r.stdout || '') + (r.stderr || '')).trim().slice(-160);
-                $.ui.toast(`${b.label}: exit ${r.exitCode}${tail ? ` · ${tail}` : ''}`);
+                lastRun = { label: b.label, exitCode: r.exitCode, tail };
+                $.ui.invalidate('ui.render');
+                $.ui.toast(`${b.label}: exit ${r.exitCode}`);
               })
-              .catch(err => $.ui.toast(`${b.label}: ${err && err.message}`));
+              .catch(err => {
+                lastRun = { label: b.label, exitCode: '?', tail: err && err.message };
+                $.ui.invalidate('ui.render');
+                $.ui.toast(`${b.label}: ${err && err.message}`);
+              });
           } else {
             const paneId = b.pane || PANE;
             $.ui
@@ -541,30 +633,8 @@ export function register(on) {
           $.ui.toast(`ccsl: ${err && err.message}`);
         }
       };
-      sectionModel().forEach((s, i) => {
-        if (i) kids.push(ui.Text({ key: `ccsl-inline-gap-${i}`, children: ' ' }));
-        kids.push(
-          ui.Box({
-            key: `ccsl-inline-${s.key}`,
-            flexDirection: 'column',
-            children: [
-              ui.Text({ key: `ccsl-inline-h-${s.key}`, dimColor: true, children: s.title }),
-              ...s.items.map(it =>
-                ui.Button({
-                  key: `ccsl-btn-${it.b.hotkey || it.b.label}`,
-                  label: it.label,
-                  hotkey: it.b.hotkey,
-                  plain: true,
-                  onPress: pressButton(it.b),
-                })
-              ),
-            ],
-          })
-        );
-      });
-      kids.push(
-        ui.Text({ key: 'ccsl-inline-hint', dimColor: true, children: '再按一次 ☰ 收起' })
-      );
+      launcherKids(ui, pressTab, pressButton, 'ccsl-inline').forEach(k => kids.push(k));
+      kids.push(ui.Text({ key: 'ccsl-inline-hint', dimColor: true, children: '再按一次 ☰ 收起' }));
     }
     const band = ui.Box({ key: 'ccsl-band', flexDirection: 'column', children: kids });
     const inner = await safe(() => next(e), null);
