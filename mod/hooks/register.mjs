@@ -181,6 +181,15 @@ export function register(on) {
     if (e.requestId !== PANE) return next(e);
     const ui = await safe(async () => $.ui.resolve(e), null);
     if (!ui || !ui.Box || !ui.Text) return next(e);
+    // Self-heal: if session.start's restore failed (or landed after this
+    // draw), pull the persisted history right here — the pane never lies about
+    // having no data while the store holds some.
+    if (!history.length) {
+      await safe(async () => {
+        const saved = await $.store.get('usage-history');
+        if (Array.isArray(saved)) history = saved.filter(r => r && typeof r.out === 'number');
+      }, null);
+    }
     const t = totals();
     const recent = history.slice(-60);
     const bars = spark(recent.map(r => r.out));
