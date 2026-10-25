@@ -1,7 +1,7 @@
 {
   "name": "cc-statusline-mod",
-  "version": "3.4.0",
-  "description": "Companion mod for cc-statusline: a tabbed quick-action launcher behind a single band toggle, plus a per-request token usage pane. Records usage straight from turn.step events — no transcript parsing.",
+  "version": "3.5.0",
+  "description": "Companion mod for cc-statusline: a one-view styled quick-action launcher behind a single band toggle, plus a per-request token usage pane. Records usage straight from turn.step events — no transcript parsing.",
   "homepage": "https://github.com/tangjianfang/claudecode-statusline#companion-mod",
   "author": {
     "name": "tangjianfang",

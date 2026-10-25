@@ -87,11 +87,11 @@ Claude Code pipes a JSON payload on stdin. Per-message token/timing data isn't i
 
 v3.0.0 ships a Claude Code **mod** alongside the status line. It runs inside Claude Code, so it can do things a status-line subprocess can't:
 
-- **One toggle above the prompt** — `[m] ☰` opens the launcher; press again (or Esc) to close
-- **Tabbed launcher** — a tab row (快捷 / 提示词 / 链接 / 命令 + your own), one tab open at a time, one button per line in Claude Code's survey style (`t: 测试并修复`). 快捷 holds one-step switches: `/fast` toggles fast mode, 权限设置 opens the permissions dialog (the mod API can't set modes directly yet). Links render like bookmarks (alias + dim address); command results appear inline when they finish. Narrow terminal where the pane can't seat? The same tabs expand inline in the band — the launcher works at any width
+- **One toggle above the prompt** — `[m] 🎛` opens the launcher; press again (or Esc) to close. Restyle it (any glyph) via `toggle` in the config
+- **One-view launcher** — every function on screen at once, nothing behind a tab: colored sections (⚡快捷切换 / ✏提示词 / 🔗链接 / $命令, plus your own `group` sections), quick switches and prompts in two columns, one hotkey per action (`t: 测试并修复`). 快捷 holds one-step switches: `/fast` toggles fast mode, 权限设置 opens the permissions dialog (the mod API can't set modes directly yet), plus `/model`, `/compact` and the usage pane. 提示词 ships 10 curated engineering prompts (继续任务, 测试并修复, 审查改动, 修复告警, 重构文件, 补文档, 写提交, 定位bug, 性能分析, 解释架构). Links render like bookmarks (alias + dim address); command results appear inline (`↳ exit 0 · …`) when they finish. Narrow terminal where the pane can't seat? The same view expands inline in the band — the launcher works at any width
 - **`/ccsl-usage` command** — opens the pane; runs with zero model turns
 - **Per-request usage pane** — a sparkline of output tokens per request plus cumulative totals, recorded directly from each model request (no transcript parsing)
-- **Custom buttons** — edit `~/.claude/ccsl-buttons.json` (auto-created with a template of common switches, prompts, links and commands) to add your own: submit slash commands, open panes, insert or send prompts, open URLs, or run host commands. `group` names a button's own tab; `toggle` restyles the band button. `/ccsl-buttons` reloads it
+- **Custom buttons** — edit `~/.claude/ccsl-buttons.json` (auto-created with the working template) to add your own: submit slash commands, open panes, insert or send prompts, open URLs, or run host commands. `group` gives a button its own section; `toggle` restyles the band button. `/ccsl-buttons` reloads it
 
 Install/update it with the same command as the status line — `cc-statusline --install` offers to copy `mod/` to `~/.claude/skills/cc-statusline-mod/`, which Claude Code loads at every startup. Preview it for one session instead with:
 
