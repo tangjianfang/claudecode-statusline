@@ -91,8 +91,8 @@ A Claude Code **mod** shipped alongside the status line. It runs inside Claude C
 
 `cc-statusline --install` offers to copy it to `~/.claude/skills/cc-statusline-mod/` (loaded at every startup); preview one session with `claude --plugin-dir /path/to/node_modules/@tangjianfang/claudecode-statusline/mod`. Then:
 
-1. Press `m` (or click `✳`, the terracotta star above the prompt) — the launcher opens
-2. Press a hotkey or click — every action is one keystroke away. Esc closes
+1. Press `m` (or click `✳`, the accent-colored star above the prompt) — the launcher opens
+2. Press a hotkey or click. Commands and links run at once; prompts and mode switches **fill the composer** — review, then Enter. Esc closes
 
 What you see — every function on screen at once, grouped into colored cards:
 
@@ -122,8 +122,8 @@ On a terminal too narrow to seat the pane, the same view expands inline in the b
 
 | Section | Hotkeys | What they do |
 |---|---|---|
-| ⚡ 快捷切换 | `f` `p` `o` `k` `u` | one-step switches: fast mode, permissions dialog, model picker, context compact, usage pane |
-| ✏ 提示词 | `n` `t` `r` `l` `w` `d` `s` `b` `q` `x` | 10 curated engineering prompts, sent on click (继续任务 / 测试并修复 / 审查改动 / 修复告警 / 重构文件 / 补文档 / 写提交 / 定位bug / 性能分析 / 解释架构) |
+| ⚡ 快捷切换 | `f` `p` `o` `k` `u` | mode switches, filled for Enter: fast mode, permissions dialog, model picker, context compact, usage pane |
+| ✏ 提示词 | `n` `t` `r` `l` `w` `d` `s` `b` `q` `x` | 10 curated engineering prompts, filled for review then Enter (继续任务 / 测试并修复 / 审查改动 / 修复告警 / 重构文件 / 补文档 / 写提交 / 定位bug / 性能分析 / 解释架构) |
 | 🔗 链接 | `a` `i` | bookmarks — alias + dim address, click opens the browser |
 | $ 命令 | `g` `y` `j` `v` | host commands with their argv shown; results appear inline, green on exit 0, red on failure |
 
@@ -145,10 +145,10 @@ Buttons live in `~/.claude/ccsl-buttons.json` (auto-created with the template ab
 
 ```json
 {
-  "toggle": { "label": "✳", "hotkey": "m", "color": "#D97757" },
+  "toggle": { "label": "✳", "hotkey": "m" },
   "buttons": [
     { "label": "快速模式", "hotkey": "f", "slash": "fast" },
-    { "label": "预检", "hotkey": "c", "prompt": "Check CI status and summarize failures.", "submit": true },
+    { "label": "预检", "hotkey": "c", "prompt": "Check CI status and summarize failures." },
     { "label": "仓库", "hotkey": "o", "url": "https://github.com/me/repo" },
     { "label": "跑构建", "hotkey": "b", "run": ["npm", "run", "build"] },
     { "label": "面板", "hotkey": "g", "pane": "ccsl-usage" },
@@ -157,8 +157,8 @@ Buttons live in `~/.claude/ccsl-buttons.json` (auto-created with the template ab
 }
 ```
 
-- `slash` submits a `/command` (fast, permissions, model, compact…); `prompt` fills the composer — add `submit: true` to send at once; `url`, `run`, `pane` open a bookmark, a host command, or a mod pane
-- `group` gives a button its own section; `toggle` restyles the band button
+- `slash` fills `/<command>` (fast, permissions, model, compact…); `prompt` fills the text — Enter sends it, nothing runs unconfirmed; `url`, `run`, `pane` open a bookmark, a host command, or a mod pane at once
+- `group` gives a button its own section; `toggle` restyles the band button (label/hotkey)
 - hotkeys: one digit or lowercase letter, live while the launcher holds focus
 
 Edit the file, then `/ccsl-buttons` reloads it. A file that still byte-matches an old factory template upgrades itself automatically on load — your edits are never overwritten.

@@ -22,18 +22,21 @@
 // commands; /ccsl-buttons reloads it). The band carries only the toggle
 // (restyled via "toggle"). Each button is one of:
 //   { label, hotkey, pane:   "ccsl-usage" }                  open a mod pane
-//   { label, hotkey, slash:  "fast" }        submit "/fast" (a mode switch —
+//   { label, hotkey, slash:  "fast" }        fill "/fast" — Enter runs it
+//                                            (interactive commands like /model
+//                                            only run from the person's Enter;
 //                                            permissions opens CC's dialog, the
 //                                            API has no mode setter yet)
-//   { label, hotkey, prompt: "text", submit: false }         fill the prompt
-//   { label, hotkey, prompt: "text", submit: true }          send immediately
+//   { label, hotkey, prompt: "text" }        fill the prompt — Enter sends it
 //   { label, hotkey, url:    "https://..." }                 open in browser
 //   { label, hotkey, run:    ["npm", "test"] }               host command
 //   { label, hotkey, ..., group: "name" }                    own section
-// Slash and prompt buttons close the launcher first — a picked action means
-// back to the conversation; the other kinds keep it open. Hotkeys are the
-// launcher's keyboard: they should stay unique across ALL buttons (only the
-// rendered view can fire them, but one key = one function reads cleanest).
+// Nothing a person hasn't confirmed runs: slash/prompt buttons FILL the
+// composer (result checked, refusal toasted) and close the launcher — a
+// picked action means back to the conversation. The other kinds keep it
+// open. Hotkeys are the launcher's keyboard: they should stay unique across
+// ALL buttons (only the rendered view can fire them, but one key = one
+// function reads cleanest).
 //
 // API discipline (learned from Claude Code's module validator + runtime):
 //   * $ nouns ($.store, $.ui, $.command, $.fs, $.process, $.prompt) must be
@@ -142,33 +145,36 @@ function defaultButtons() {
 }
 
 // The band's one toggle button — the launcher stays one keypress away even
-// with everything else customized away. Default glyph/color match Claude
-// Code's own TUI family: the star burst ✳ in Anthropic's terracotta.
+// with everything else customized away. The glyph is a one-glyph LABEL with
+// variant primary (never a styled Text child): the engine then draws it in
+// the theme's accent color AND inverts the whole button under the focus and
+// the pointer — a styled child keeps its own color and the selection state
+// lands beside the icon instead of on it (real-machine-verified).
 function defaultToggle() {
-  return { label: '✳', hotkey: 'm', color: '#D97757' };
+  return { label: '✳', hotkey: 'm' };
 }
 
 function configTemplate() {
   return `${JSON.stringify(
     {
-      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (submits /<command>; permissions opens CC dialog — no mode setter API yet) | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.',
-      toggle: { label: '✳', hotkey: 'm', color: '#D97757' },
+      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (fills /<command> — Enter runs it; permissions opens CC dialog, no mode setter API yet) | prompt=<text> (fills the composer — Enter sends; nothing runs unconfirmed) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button (label/hotkey). hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.',
+      toggle: { label: '✳', hotkey: 'm' },
       buttons: [
         { label: '快速模式', hotkey: 'f', slash: 'fast' },
         { label: '权限设置', hotkey: 'p', slash: 'permissions' },
         { label: '模型选择', hotkey: 'o', slash: 'model' },
         { label: '压缩上下文', hotkey: 'k', slash: 'compact' },
         { label: '用量面板', hotkey: 'u', pane: PANE },
-        { label: '继续任务', hotkey: 'n', prompt: '继续上次中断的任务：先回顾我们最近在做什么，然后接着完成。', submit: true },
-        { label: '测试并修复', hotkey: 't', prompt: '运行完整测试套件；若有失败：定位根因后修复，再跑一遍直到全绿。总结改了什么。', submit: true },
-        { label: '审查改动', hotkey: 'r', prompt: '审查当前 git diff：找正确性 bug、边界情况和安全隐患，按严重程度列出，先不改代码。', submit: true },
-        { label: '修复告警', hotkey: 'l', prompt: '运行 lint 和类型检查，修复所有告警，不改变行为。', submit: true },
-        { label: '重构文件', hotkey: 'w', prompt: '重构当前文件：提高可读性、消除重复，不改变任何行为；改完运行测试验证。', submit: true },
-        { label: '补文档', hotkey: 'd', prompt: '为刚才的改动更新文档：面向新用户，简明，附使用示例。', submit: true },
-        { label: '写提交', hotkey: 's', prompt: '把当前改动写成一条 conventional commit 并提交（不要推送），提交信息说明为什么这样改。', submit: true },
-        { label: '定位bug', hotkey: 'b', prompt: '根据我贴的错误信息系统性定位根因：先复现、再缩小范围；修复前先说明根因。', submit: true },
-        { label: '性能分析', hotkey: 'q', prompt: '找出当前最热路径的性能瓶颈：先测量再优化，给出前后对比数据。', submit: true },
-        { label: '解释架构', hotkey: 'x', prompt: '解释这个仓库：模块划分、关键数据流、要改某类东西该去哪里，面向新人。', submit: true },
+        { label: '继续任务', hotkey: 'n', prompt: '继续上次中断的任务：先回顾我们最近在做什么，然后接着完成。' },
+        { label: '测试并修复', hotkey: 't', prompt: '运行完整测试套件；若有失败：定位根因后修复，再跑一遍直到全绿。总结改了什么。' },
+        { label: '审查改动', hotkey: 'r', prompt: '审查当前 git diff：找正确性 bug、边界情况和安全隐患，按严重程度列出，先不改代码。' },
+        { label: '修复告警', hotkey: 'l', prompt: '运行 lint 和类型检查，修复所有告警，不改变行为。' },
+        { label: '重构文件', hotkey: 'w', prompt: '重构当前文件：提高可读性、消除重复，不改变任何行为；改完运行测试验证。' },
+        { label: '补文档', hotkey: 'd', prompt: '为刚才的改动更新文档：面向新用户，简明，附使用示例。' },
+        { label: '写提交', hotkey: 's', prompt: '把当前改动写成一条 conventional commit 并提交（不要推送），提交信息说明为什么这样改。' },
+        { label: '定位bug', hotkey: 'b', prompt: '根据我贴的错误信息系统性定位根因：先复现、再缩小范围；修复前先说明根因。' },
+        { label: '性能分析', hotkey: 'q', prompt: '找出当前最热路径的性能瓶颈：先测量再优化，给出前后对比数据。' },
+        { label: '解释架构', hotkey: 'x', prompt: '解释这个仓库：模块划分、关键数据流、要改某类东西该去哪里，面向新人。' },
         { label: '仓库', hotkey: 'a', url: 'https://github.com/tangjianfang/claudecode-statusline' },
         { label: '议题', hotkey: 'i', url: 'https://github.com/tangjianfang/claudecode-statusline/issues' },
         { label: 'git状态', hotkey: 'g', run: ['git', 'status', '-sb'] },
@@ -189,6 +195,157 @@ function configTemplate() {
 // leaving a stale demo behind (a hand-edited file never matches and is always
 // preserved). When configTemplate() changes, append the outgoing template.
 const LEGACY_TEMPLATES = [
+`{
+  "_doc": "cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (submits /<command>; permissions opens CC dialog — no mode setter API yet) | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.",
+  "toggle": {
+    "label": "✳",
+    "hotkey": "m",
+    "color": "#D97757"
+  },
+  "buttons": [
+    {
+      "label": "快速模式",
+      "hotkey": "f",
+      "slash": "fast"
+    },
+    {
+      "label": "权限设置",
+      "hotkey": "p",
+      "slash": "permissions"
+    },
+    {
+      "label": "模型选择",
+      "hotkey": "o",
+      "slash": "model"
+    },
+    {
+      "label": "压缩上下文",
+      "hotkey": "k",
+      "slash": "compact"
+    },
+    {
+      "label": "用量面板",
+      "hotkey": "u",
+      "pane": "ccsl-usage"
+    },
+    {
+      "label": "继续任务",
+      "hotkey": "n",
+      "prompt": "继续上次中断的任务：先回顾我们最近在做什么，然后接着完成。",
+      "submit": true
+    },
+    {
+      "label": "测试并修复",
+      "hotkey": "t",
+      "prompt": "运行完整测试套件；若有失败：定位根因后修复，再跑一遍直到全绿。总结改了什么。",
+      "submit": true
+    },
+    {
+      "label": "审查改动",
+      "hotkey": "r",
+      "prompt": "审查当前 git diff：找正确性 bug、边界情况和安全隐患，按严重程度列出，先不改代码。",
+      "submit": true
+    },
+    {
+      "label": "修复告警",
+      "hotkey": "l",
+      "prompt": "运行 lint 和类型检查，修复所有告警，不改变行为。",
+      "submit": true
+    },
+    {
+      "label": "重构文件",
+      "hotkey": "w",
+      "prompt": "重构当前文件：提高可读性、消除重复，不改变任何行为；改完运行测试验证。",
+      "submit": true
+    },
+    {
+      "label": "补文档",
+      "hotkey": "d",
+      "prompt": "为刚才的改动更新文档：面向新用户，简明，附使用示例。",
+      "submit": true
+    },
+    {
+      "label": "写提交",
+      "hotkey": "s",
+      "prompt": "把当前改动写成一条 conventional commit 并提交（不要推送），提交信息说明为什么这样改。",
+      "submit": true
+    },
+    {
+      "label": "定位bug",
+      "hotkey": "b",
+      "prompt": "根据我贴的错误信息系统性定位根因：先复现、再缩小范围；修复前先说明根因。",
+      "submit": true
+    },
+    {
+      "label": "性能分析",
+      "hotkey": "q",
+      "prompt": "找出当前最热路径的性能瓶颈：先测量再优化，给出前后对比数据。",
+      "submit": true
+    },
+    {
+      "label": "解释架构",
+      "hotkey": "x",
+      "prompt": "解释这个仓库：模块划分、关键数据流、要改某类东西该去哪里，面向新人。",
+      "submit": true
+    },
+    {
+      "label": "仓库",
+      "hotkey": "a",
+      "url": "https://github.com/tangjianfang/claudecode-statusline"
+    },
+    {
+      "label": "议题",
+      "hotkey": "i",
+      "url": "https://github.com/tangjianfang/claudecode-statusline/issues"
+    },
+    {
+      "label": "git状态",
+      "hotkey": "g",
+      "run": [
+        "git",
+        "status",
+        "-sb"
+      ]
+    },
+    {
+      "label": "同步拉取",
+      "hotkey": "y",
+      "run": [
+        "git",
+        "pull",
+        "--ff-only"
+      ]
+    },
+    {
+      "label": "语法检查",
+      "hotkey": "j",
+      "run": [
+        "npm",
+        "run",
+        "check"
+      ]
+    },
+    {
+      "label": "构建示例",
+      "hotkey": "v",
+      "run": [
+        "npm",
+        "run",
+        "build"
+      ]
+    },
+    {
+      "label": "其他命令",
+      "hotkey": "z",
+      "group": "misc",
+      "run": [
+        "node",
+        "--version"
+      ]
+    }
+  ]
+}
+`,
 `{
   "_doc": "cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (submits /<command>; permissions opens CC dialog — no mode setter API yet) | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.",
   "toggle": {
@@ -546,7 +703,6 @@ function normalizeButton(b) {
     out.slash = s;
   } else if (typeof b.prompt === 'string' && b.prompt) {
     out.prompt = b.prompt;
-    out.submit = b.submit === true;
   } else if (typeof b.url === 'string' && /^https?:\/\//.test(b.url)) out.url = b.url;
   else if (Array.isArray(b.run) && b.run.length && b.run.every(a => typeof a === 'string')) {
     out.run = b.run;
@@ -561,9 +717,6 @@ function normalizeToggle(t) {
   if (!t || typeof t !== 'object') return out;
   if (typeof t.label === 'string' && t.label) out.label = clip(t.label, 6);
   if (typeof t.hotkey === 'string' && /^[0-9a-z]$/.test(t.hotkey)) out.hotkey = t.hotkey;
-  if (typeof t.color === 'string' && /^(#[0-9a-f]{3,8}|[a-z]+)$/i.test(t.color)) {
-    out.color = t.color.toLowerCase();
-  }
   return out;
 }
 
@@ -849,10 +1002,12 @@ export function register(on) {
             .run(browserArgv(b.url))
             .then(() => {})
             .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-        } else if (typeof b.slash === 'string') {
-          // A mode switch means back to the conversation: collapse whichever
-          // launcher form is up (inlined — $ nouns never reach helpers), then
-          // submit the command.
+        } else if (typeof b.slash === 'string' || typeof b.prompt === 'string') {
+          // Fill the composer and let the person press Enter — nothing runs
+          // without confirmation (and a plugin's prompt.submit can't run
+          // interactive commands like /model at all: it queues a turn of its
+          // own instead). Collapse whichever launcher form is up first
+          // (inlined — $ nouns never reach helpers).
           if (inlineUp) {
             inlineUp = false;
             $.ui.invalidate('ui.render');
@@ -861,26 +1016,17 @@ export function register(on) {
             paneUp = false;
             $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
           }
-          $.prompt.submit({ text: `/${b.slash}` });
-          $.ui.toast(`已提交 /${b.slash}`);
-        } else if (typeof b.prompt === 'string') {
-          if (inlineUp) {
-            inlineUp = false;
-            $.ui.invalidate('ui.render');
-          }
-          if (paneUp) {
-            paneUp = false;
-            $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-          }
-          if (b.submit) {
-            $.prompt.submit({ text: b.prompt });
-            $.ui.toast(`sent: ${b.prompt.slice(0, 60)}`);
-          } else {
-            $.prompt
-              .fill({ text: b.prompt, mode: 'insert' })
-              .then(() => $.ui.toast(`filled — Enter to send`))
-              .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-          }
+          const text = typeof b.slash === 'string' ? `/${b.slash}` : b.prompt;
+          $.prompt
+            .fill({ text, mode: 'insert' })
+            .then(r => {
+              if (r && r.isFilled === false) {
+                $.ui.toast(`ccsl: 无法填入${r.refusal === 'dialog' ? '（对话框占用）' : r.refusal === 'no_composer' ? '（无可用的输入框）' : ''}`);
+              } else {
+                $.ui.toast('已填入 — Enter 执行');
+              }
+            })
+            .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
         } else if (Array.isArray(b.run)) {
           $.ui.toast(`${b.label}: running…`);
           $.process
@@ -936,11 +1082,9 @@ export function register(on) {
     const t = toggle || defaultToggle();
     const toggleBtn = ui.Button({
       key: 'ccsl-toggle',
+      label: t.label,
       hotkey: t.hotkey,
-      plain: true,
-      children: [
-        ui.Text({ key: 'ccsl-toggle-glyph', color: t.color, bold: true, children: t.label }),
-      ],
+      variant: 'primary',
       onPress: () => {
         // Synchronous dispatch — no await before open/close, ever.
         try {
@@ -992,7 +1136,7 @@ export function register(on) {
               .run(browserArgv(b.url))
               .then(() => {})
               .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-          } else if (typeof b.slash === 'string') {
+          } else if (typeof b.slash === 'string' || typeof b.prompt === 'string') {
             if (inlineUp) {
               inlineUp = false;
               $.ui.invalidate('ui.render');
@@ -1001,26 +1145,17 @@ export function register(on) {
               paneUp = false;
               $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
             }
-            $.prompt.submit({ text: `/${b.slash}` });
-            $.ui.toast(`已提交 /${b.slash}`);
-          } else if (typeof b.prompt === 'string') {
-            if (inlineUp) {
-              inlineUp = false;
-              $.ui.invalidate('ui.render');
-            }
-            if (paneUp) {
-              paneUp = false;
-              $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-            }
-            if (b.submit) {
-              $.prompt.submit({ text: b.prompt });
-              $.ui.toast(`sent: ${b.prompt.slice(0, 60)}`);
-            } else {
-              $.prompt
-                .fill({ text: b.prompt, mode: 'insert' })
-                .then(() => $.ui.toast(`filled — Enter to send`))
-                .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-            }
+            const text = typeof b.slash === 'string' ? `/${b.slash}` : b.prompt;
+            $.prompt
+              .fill({ text, mode: 'insert' })
+              .then(r => {
+                if (r && r.isFilled === false) {
+                  $.ui.toast(`ccsl: 无法填入${r.refusal === 'dialog' ? '（对话框占用）' : r.refusal === 'no_composer' ? '（无可用的输入框）' : ''}`);
+                } else {
+                  $.ui.toast('已填入 — Enter 执行');
+                }
+              })
+              .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
           } else if (Array.isArray(b.run)) {
             $.ui.toast(`${b.label}: running…`);
             $.process
