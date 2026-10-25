@@ -142,16 +142,17 @@ function defaultButtons() {
 }
 
 // The band's one toggle button — the launcher stays one keypress away even
-// with everything else customized away.
+// with everything else customized away. Default glyph/color match Claude
+// Code's own TUI family: the star burst ✳ in Anthropic's terracotta.
 function defaultToggle() {
-  return { label: '🎛', hotkey: 'm' };
+  return { label: '✳', hotkey: 'm', color: '#D97757' };
 }
 
 function configTemplate() {
   return `${JSON.stringify(
     {
       _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (submits /<command>; permissions opens CC dialog — no mode setter API yet) | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.',
-      toggle: { label: '🎛', hotkey: 'm' },
+      toggle: { label: '✳', hotkey: 'm', color: '#D97757' },
       buttons: [
         { label: '⚡快速模式', hotkey: 'f', slash: 'fast' },
         { label: '🔑权限设置', hotkey: 'p', slash: 'permissions' },
@@ -182,6 +183,205 @@ function configTemplate() {
   )}\n`;
 }
 
+
+// Byte-exact factory templates of past versions. A config file that matches
+// one was never hand-edited — upgrade it to the current template instead of
+// leaving a stale demo behind (a hand-edited file never matches and is always
+// preserved). When configTemplate() changes, append the outgoing template.
+const LEGACY_TEMPLATES = [
+`{
+  "_doc": "cc-statusline mod buttons. Actions: pane=<pane id> | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. hotkey: one digit/lowercase letter, works while the band holds focus (ctrl+x). Reload with /ccsl-buttons.",
+  "buttons": [
+    {
+      "label": "usage",
+      "hotkey": "u",
+      "pane": "ccsl-usage"
+    },
+    {
+      "label": "tokens",
+      "hotkey": "c",
+      "pane": "ccsl-usage"
+    },
+    {
+      "label": "tests",
+      "hotkey": "t",
+      "prompt": "Run the full test suite and fix any failures.",
+      "submit": false
+    },
+    {
+      "label": "repo",
+      "hotkey": "o",
+      "url": "https://github.com/tangjianfang/claudecode-statusline"
+    },
+    {
+      "label": "check",
+      "hotkey": "k",
+      "run": [
+        "npm",
+        "run",
+        "check"
+      ]
+    }
+  ]
+}
+`,
+`{
+  "_doc": "cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (submits /<command>; permissions opens CC dialog — no mode setter API yet) | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.",
+  "toggle": {
+    "label": "🎛",
+    "hotkey": "m"
+  },
+  "buttons": [
+    {
+      "label": "⚡快速模式",
+      "hotkey": "f",
+      "slash": "fast"
+    },
+    {
+      "label": "🔑权限设置",
+      "hotkey": "p",
+      "slash": "permissions"
+    },
+    {
+      "label": "⚙模型选择",
+      "hotkey": "o",
+      "slash": "model"
+    },
+    {
+      "label": "🗜压缩上下文",
+      "hotkey": "k",
+      "slash": "compact"
+    },
+    {
+      "label": "📊用量面板",
+      "hotkey": "u",
+      "pane": "ccsl-usage"
+    },
+    {
+      "label": "继续任务",
+      "hotkey": "n",
+      "prompt": "继续上次中断的任务：先回顾我们最近在做什么，然后接着完成。",
+      "submit": true
+    },
+    {
+      "label": "测试并修复",
+      "hotkey": "t",
+      "prompt": "运行完整测试套件；若有失败：定位根因后修复，再跑一遍直到全绿。总结改了什么。",
+      "submit": true
+    },
+    {
+      "label": "审查改动",
+      "hotkey": "r",
+      "prompt": "审查当前 git diff：找正确性 bug、边界情况和安全隐患，按严重程度列出，先不改代码。",
+      "submit": true
+    },
+    {
+      "label": "修复告警",
+      "hotkey": "l",
+      "prompt": "运行 lint 和类型检查，修复所有告警，不改变行为。",
+      "submit": true
+    },
+    {
+      "label": "重构文件",
+      "hotkey": "w",
+      "prompt": "重构当前文件：提高可读性、消除重复，不改变任何行为；改完运行测试验证。",
+      "submit": true
+    },
+    {
+      "label": "补文档",
+      "hotkey": "d",
+      "prompt": "为刚才的改动更新文档：面向新用户，简明，附使用示例。",
+      "submit": true
+    },
+    {
+      "label": "写提交",
+      "hotkey": "s",
+      "prompt": "把当前改动写成一条 conventional commit 并提交（不要推送），提交信息说明为什么这样改。",
+      "submit": true
+    },
+    {
+      "label": "定位bug",
+      "hotkey": "b",
+      "prompt": "根据我贴的错误信息系统性定位根因：先复现、再缩小范围；修复前先说明根因。",
+      "submit": true
+    },
+    {
+      "label": "性能分析",
+      "hotkey": "q",
+      "prompt": "找出当前最热路径的性能瓶颈：先测量再优化，给出前后对比数据。",
+      "submit": true
+    },
+    {
+      "label": "解释架构",
+      "hotkey": "x",
+      "prompt": "解释这个仓库：模块划分、关键数据流、要改某类东西该去哪里，面向新人。",
+      "submit": true
+    },
+    {
+      "label": "仓库",
+      "hotkey": "a",
+      "url": "https://github.com/tangjianfang/claudecode-statusline"
+    },
+    {
+      "label": "议题",
+      "hotkey": "i",
+      "url": "https://github.com/tangjianfang/claudecode-statusline/issues"
+    },
+    {
+      "label": "git状态",
+      "hotkey": "g",
+      "run": [
+        "git",
+        "status",
+        "-sb"
+      ]
+    },
+    {
+      "label": "同步拉取",
+      "hotkey": "y",
+      "run": [
+        "git",
+        "pull",
+        "--ff-only"
+      ]
+    },
+    {
+      "label": "语法检查",
+      "hotkey": "j",
+      "run": [
+        "npm",
+        "run",
+        "check"
+      ]
+    },
+    {
+      "label": "构建示例",
+      "hotkey": "v",
+      "run": [
+        "npm",
+        "run",
+        "build"
+      ]
+    },
+    {
+      "label": "其他命令",
+      "hotkey": "z",
+      "group": "misc",
+      "run": [
+        "node",
+        "--version"
+      ]
+    }
+  ]
+}
+`,
+];
+
+// The upgraded template for an untouched legacy config file, else null.
+function templateUpgrade(text) {
+  return LEGACY_TEMPLATES.includes(text) ? configTemplate() : null;
+}
+
 // Normalize one config entry: label required, hotkey one digit/lowercase
 // letter, exactly one action field, optional group. Returns null for junk.
 function normalizeButton(b) {
@@ -210,6 +410,9 @@ function normalizeToggle(t) {
   if (!t || typeof t !== 'object') return out;
   if (typeof t.label === 'string' && t.label) out.label = clip(t.label, 6);
   if (typeof t.hotkey === 'string' && /^[0-9a-z]$/.test(t.hotkey)) out.hotkey = t.hotkey;
+  if (typeof t.color === 'string' && /^(#[0-9a-f]{3,8}|[a-z]+)$/i.test(t.color)) {
+    out.color = t.color.toLowerCase();
+  }
   return out;
 }
 
@@ -312,7 +515,17 @@ export function register(on) {
         await $.fs.write(cfgPath, configTemplate());
         applyConfigText(configTemplate());
       } else {
-        applyConfigText(text);
+        const up = templateUpgrade(text);
+        if (up) {
+          // Untouched legacy factory file — refresh it in place so upgrades
+          // actually reach the person (an edited file never matches and is
+          // always preserved).
+          await $.fs.write(cfgPath, up);
+          const n = applyConfigText(up);
+          $.ui.toast(`ccsl: 未修改的旧按钮模板已自动升级（${n} 个按钮）`);
+        } else {
+          applyConfigText(text);
+        }
       }
     }, null);
     for (const cmd of [
@@ -370,8 +583,14 @@ export function register(on) {
     await safe(async () => {
       const home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME'));
       const cfgPath = `${home}/.claude/ccsl-buttons.json`.replace(/\\/g, '/');
-      const n = applyConfigText(await $.fs.read(cfgPath));
-      msg = `cc-statusline: loaded ${n} button(s) from ${cfgPath}.`;
+      const text = await $.fs.read(cfgPath);
+      const up = templateUpgrade(text);
+      if (up) {
+        await $.fs.write(cfgPath, up);
+        msg = `cc-statusline: legacy template upgraded — ${applyConfigText(up)} button(s) from ${cfgPath}.`;
+      } else {
+        msg = `cc-statusline: loaded ${applyConfigText(text)} button(s) from ${cfgPath}.`;
+      }
     }, null);
     return { text: msg };
   }).catch(() => {});
@@ -547,8 +766,11 @@ export function register(on) {
     const t = toggle || defaultToggle();
     const toggleBtn = ui.Button({
       key: 'ccsl-toggle',
-      label: t.label,
       hotkey: t.hotkey,
+      plain: true,
+      children: [
+        ui.Text({ key: 'ccsl-toggle-glyph', color: t.color, bold: true, children: t.label }),
+      ],
       onPress: () => {
         // Synchronous dispatch — no await before open/close, ever.
         try {
@@ -656,7 +878,7 @@ export function register(on) {
         }
       };
       sectionEls(ui, pressButton, 'ccsl-inline').forEach(k => kids.push(k));
-      kids.push(ui.Text({ key: 'ccsl-inline-hint', dimColor: true, children: '再按一次 🎛 收起' }));
+      kids.push(ui.Text({ key: 'ccsl-inline-hint', dimColor: true, children: '再按一次 ✳ 收起' }));
     }
     const band = ui.Box({ key: 'ccsl-band', flexDirection: 'column', children: kids });
     const inner = await safe(() => next(e), null);

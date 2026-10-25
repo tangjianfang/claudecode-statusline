@@ -19,7 +19,7 @@ const { pathToFileURL } = require('url');
 // and that installed copy is exactly where a version marker matters most — npm never
 // refreshes it on its own, so a stale copy would otherwise be invisible. `npm run
 // check` verifies this stays in sync with package.json.
-const VERSION = '3.5.0';
+const VERSION = '3.5.1';
 
 const ANSI = {
   reset: '\x1b[0m',
