@@ -915,7 +915,7 @@ export function register(on) {
   // address / the actual argv). No emoji in button labels: terminals render
   // them at inconsistent widths and they collide with the text. The finished
   // command's result line is colored by exit code — green done, red failed.
-  function sectionEls(ui, pressButton, keyPrefix) {
+  function sectionEls(ui, pressButton, keyPrefix, cols) {
     return sectionModel().map((s, si) => {
       const kids = [
         ui.Text({
@@ -973,11 +973,16 @@ export function register(on) {
           })
         );
       }
+      // Uniform card width (the body's own width, capped) with content
+      // centered: every card aligns edge to edge and every row sits symmetric
+      // about the pane's axis — ragged auto-width cards read as sloppy.
       return ui.Box({
         key: `${keyPrefix}-sec-${s.key}`,
         borderStyle: 'round',
         borderColor: s.style.color,
         flexDirection: 'column',
+        alignItems: 'center',
+        width: cols ? Math.min(cols, 48) : undefined,
         paddingX: 1,
         marginTop: si ? 1 : 0,
         children: kids,
@@ -1053,7 +1058,7 @@ export function register(on) {
         $.ui.toast(`ccsl: ${err && err.message}`);
       }
     };
-    const kids = sectionEls(ui, pressButton, 'ccsl-pane');
+    const kids = sectionEls(ui, pressButton, 'ccsl-pane', e.props && e.props.bodyColumns);
     kids.push(
       ui.Text({
         key: 'ccsl-btns-hint',
@@ -1123,7 +1128,14 @@ export function register(on) {
         }
       },
     });
-    const kids = [ui.Box({ key: 'ccsl-band-row', flexDirection: 'row', children: [toggleBtn] })];
+    const kids = [
+      ui.Box({
+        key: 'ccsl-band-row',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        children: [toggleBtn],
+      }),
+    ];
     if (inlineUp) {
       // The inline fallback mirrors the pane's launcher — same sections, same
       // dispatch, duplicated here because the press factory must bind this
@@ -1182,7 +1194,7 @@ export function register(on) {
           $.ui.toast(`ccsl: ${err && err.message}`);
         }
       };
-      sectionEls(ui, pressButton, 'ccsl-inline').forEach(k => kids.push(k));
+      sectionEls(ui, pressButton, 'ccsl-inline', e.props && e.props.bodyColumns).forEach(k => kids.push(k));
       kids.push(ui.Text({ key: 'ccsl-inline-hint', dimColor: true, children: '再按一次 ✳ 收起' }));
     }
     const band = ui.Box({ key: 'ccsl-band', flexDirection: 'column', children: kids });
