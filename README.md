@@ -85,21 +85,51 @@ Claude Code pipes a JSON payload on stdin. Per-message token/timing data isn't i
 
 ## Companion mod (quick buttons + usage pane)
 
-v3.0.0 ships a Claude Code **mod** alongside the status line. It runs inside Claude Code, so it can do things a status-line subprocess can't:
+A Claude Code **mod** shipped alongside the status line. It runs inside Claude Code, so it can do things a status-line subprocess can't: hotkeyed buttons and per-request usage stats, straight from the engine.
 
-- **One toggle above the prompt** — `[m] ✳` in Anthropic terracotta opens the launcher; press again (or Esc) to close. Restyle glyph/hotkey/color via `toggle` in the config
-- **One-view launcher** — every function on screen at once, nothing behind a tab: colored card sections (⚡快捷切换 / ✏提示词 / 🔗链接 / $命令, plus your own `group`), quick switches and prompts in two aligned columns, one hotkey per action (`t: 测试并修复`). 快捷 holds one-step switches: `/fast` toggles fast mode, 权限设置 opens the permissions dialog (the mod API can't set modes directly yet), plus `/model`, `/compact` and the usage pane. 提示词 ships 10 curated engineering prompts (继续任务, 测试并修复, 审查改动, 修复告警, 重构文件, 补文档, 写提交, 定位bug, 性能分析, 解释架构). Links show their address and commands their actual argv (`git状态  git status -sb`); finished command results appear inline colored green/red by exit code. Narrow terminal where the pane can't seat? The same view expands inline in the band — the launcher works at any width
-- **`/ccsl-usage` command** — opens the pane; runs with zero model turns
-- **Per-request usage pane** — a sparkline of output tokens per request plus cumulative totals, recorded directly from each model request (no transcript parsing)
-- **Custom buttons** — edit `~/.claude/ccsl-buttons.json` (auto-created with the working template) to add your own: submit slash commands, open panes, insert or send prompts, open URLs, or run host commands. `group` gives a button its own section; `toggle` restyles the band button. `/ccsl-buttons` reloads it. A config file that still byte-matches an old factory template upgrades itself automatically — your edits are never overwritten
+### Quick start
 
-Install/update it with the same command as the status line — `cc-statusline --install` offers to copy `mod/` to `~/.claude/skills/cc-statusline-mod/`, which Claude Code loads at every startup. Preview it for one session instead with:
+`cc-statusline --install` offers to copy it to `~/.claude/skills/cc-statusline-mod/` (loaded at every startup); preview one session with `claude --plugin-dir /path/to/node_modules/@tangjianfang/claudecode-statusline/mod`. Then:
 
-```bash
-claude --plugin-dir /path/to/node_modules/@tangjianfang/claudecode-statusline/mod   # or the repo's mod/
+1. Press `m` (or click `✳`, the terracotta star above the prompt) — the launcher opens
+2. Press a hotkey or click — every action is one keystroke away. Esc closes
+
+What you see — every function on screen at once, grouped into colored cards:
+
+```
+╭─ ⚡ 快捷切换 ────────────────╮
+│ f: 快速模式    p: 权限设置   │
+│ o: 模型选择    k: 压缩上下文 │
+│ u: 用量面板                 │
+╰─────────────────────────────╯
+╭─ ✏ 提示词 ──────────────────╮
+│ n: 继续任务    t: 测试并修复 │
+│ r: 审查改动    l: 修复告警   │
+│ …                           │
+╰─────────────────────────────╯
+╭─ 🔗 链接 ───────────────────╮
+│ a: 仓库  github.com/…       │
+╰─────────────────────────────╯
+╭─ $ 命令 ────────────────────╮
+│ g: git状态  git status -sb  │
+│ ↳ git状态: exit 0           │
+╰─────────────────────────────╯
 ```
 
-Bind the command to a key (optional) in `~/.claude/keybindings.json`:
+On a terminal too narrow to seat the pane, the same view expands inline in the band instead — same buttons, any width.
+
+### What's on it
+
+| Section | Hotkeys | What they do |
+|---|---|---|
+| ⚡ 快捷切换 | `f` `p` `o` `k` `u` | one-step switches: fast mode, permissions dialog, model picker, context compact, usage pane |
+| ✏ 提示词 | `n` `t` `r` `l` `w` `d` `s` `b` `q` `x` | 10 curated engineering prompts, sent on click (继续任务 / 测试并修复 / 审查改动 / 修复告警 / 重构文件 / 补文档 / 写提交 / 定位bug / 性能分析 / 解释架构) |
+| 🔗 链接 | `a` `i` | bookmarks — alias + dim address, click opens the browser |
+| $ 命令 | `g` `y` `j` `v` | host commands with their argv shown; results appear inline, green on exit 0, red on failure |
+
+A mod can't set permission modes (API limitation) — `p` opens Claude Code's permissions dialog, which is the shortest path.
+
+`/ccsl-usage` opens the usage pane (per-request output sparkline + cumulative totals, no model turn). Optional key binding in `~/.claude/keybindings.json`:
 
 ```json
 {
@@ -109,7 +139,31 @@ Bind the command to a key (optional) in `~/.claude/keybindings.json`:
 }
 ```
 
-Remove it by deleting `~/.claude/skills/cc-statusline-mod/`. The mod never runs when `disableAllHooks` is true (that flag also disables custom status lines).
+### Customize
+
+Buttons live in `~/.claude/ccsl-buttons.json` (auto-created with the template above). One button = one action — five types plus two grouping fields:
+
+```json
+{
+  "toggle": { "label": "✳", "hotkey": "m", "color": "#D97757" },
+  "buttons": [
+    { "label": "快速模式", "hotkey": "f", "slash": "fast" },
+    { "label": "预检", "hotkey": "c", "prompt": "Check CI status and summarize failures.", "submit": true },
+    { "label": "仓库", "hotkey": "o", "url": "https://github.com/me/repo" },
+    { "label": "跑构建", "hotkey": "b", "run": ["npm", "run", "build"] },
+    { "label": "面板", "hotkey": "g", "pane": "ccsl-usage" },
+    { "label": "发布", "hotkey": "d", "group": "发布", "run": ["npm", "run", "deploy"] }
+  ]
+}
+```
+
+- `slash` submits a `/command` (fast, permissions, model, compact…); `prompt` fills the composer — add `submit: true` to send at once; `url`, `run`, `pane` open a bookmark, a host command, or a mod pane
+- `group` gives a button its own section; `toggle` restyles the band button
+- hotkeys: one digit or lowercase letter, live while the launcher holds focus
+
+Edit the file, then `/ccsl-buttons` reloads it. A file that still byte-matches an old factory template upgrades itself automatically on load — your edits are never overwritten.
+
+Remove the mod by deleting `~/.claude/skills/cc-statusline-mod/`. It never runs when `disableAllHooks` is true (that flag also disables custom status lines).
 
 ## Limitations
 
