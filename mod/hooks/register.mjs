@@ -154,11 +154,11 @@ function configTemplate() {
       _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (submits /<command>; permissions opens CC dialog — no mode setter API yet) | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.',
       toggle: { label: '✳', hotkey: 'm', color: '#D97757' },
       buttons: [
-        { label: '⚡快速模式', hotkey: 'f', slash: 'fast' },
-        { label: '🔑权限设置', hotkey: 'p', slash: 'permissions' },
-        { label: '⚙模型选择', hotkey: 'o', slash: 'model' },
-        { label: '🗜压缩上下文', hotkey: 'k', slash: 'compact' },
-        { label: '📊用量面板', hotkey: 'u', pane: PANE },
+        { label: '快速模式', hotkey: 'f', slash: 'fast' },
+        { label: '权限设置', hotkey: 'p', slash: 'permissions' },
+        { label: '模型选择', hotkey: 'o', slash: 'model' },
+        { label: '压缩上下文', hotkey: 'k', slash: 'compact' },
+        { label: '用量面板', hotkey: 'u', pane: PANE },
         { label: '继续任务', hotkey: 'n', prompt: '继续上次中断的任务：先回顾我们最近在做什么，然后接着完成。', submit: true },
         { label: '测试并修复', hotkey: 't', prompt: '运行完整测试套件；若有失败：定位根因后修复，再跑一遍直到全绿。总结改了什么。', submit: true },
         { label: '审查改动', hotkey: 'r', prompt: '审查当前 git diff：找正确性 bug、边界情况和安全隐患，按严重程度列出，先不改代码。', submit: true },
@@ -189,6 +189,157 @@ function configTemplate() {
 // leaving a stale demo behind (a hand-edited file never matches and is always
 // preserved). When configTemplate() changes, append the outgoing template.
 const LEGACY_TEMPLATES = [
+`{
+  "_doc": "cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (submits /<command>; permissions opens CC dialog — no mode setter API yet) | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.",
+  "toggle": {
+    "label": "✳",
+    "hotkey": "m",
+    "color": "#D97757"
+  },
+  "buttons": [
+    {
+      "label": "⚡快速模式",
+      "hotkey": "f",
+      "slash": "fast"
+    },
+    {
+      "label": "🔑权限设置",
+      "hotkey": "p",
+      "slash": "permissions"
+    },
+    {
+      "label": "⚙模型选择",
+      "hotkey": "o",
+      "slash": "model"
+    },
+    {
+      "label": "🗜压缩上下文",
+      "hotkey": "k",
+      "slash": "compact"
+    },
+    {
+      "label": "📊用量面板",
+      "hotkey": "u",
+      "pane": "ccsl-usage"
+    },
+    {
+      "label": "继续任务",
+      "hotkey": "n",
+      "prompt": "继续上次中断的任务：先回顾我们最近在做什么，然后接着完成。",
+      "submit": true
+    },
+    {
+      "label": "测试并修复",
+      "hotkey": "t",
+      "prompt": "运行完整测试套件；若有失败：定位根因后修复，再跑一遍直到全绿。总结改了什么。",
+      "submit": true
+    },
+    {
+      "label": "审查改动",
+      "hotkey": "r",
+      "prompt": "审查当前 git diff：找正确性 bug、边界情况和安全隐患，按严重程度列出，先不改代码。",
+      "submit": true
+    },
+    {
+      "label": "修复告警",
+      "hotkey": "l",
+      "prompt": "运行 lint 和类型检查，修复所有告警，不改变行为。",
+      "submit": true
+    },
+    {
+      "label": "重构文件",
+      "hotkey": "w",
+      "prompt": "重构当前文件：提高可读性、消除重复，不改变任何行为；改完运行测试验证。",
+      "submit": true
+    },
+    {
+      "label": "补文档",
+      "hotkey": "d",
+      "prompt": "为刚才的改动更新文档：面向新用户，简明，附使用示例。",
+      "submit": true
+    },
+    {
+      "label": "写提交",
+      "hotkey": "s",
+      "prompt": "把当前改动写成一条 conventional commit 并提交（不要推送），提交信息说明为什么这样改。",
+      "submit": true
+    },
+    {
+      "label": "定位bug",
+      "hotkey": "b",
+      "prompt": "根据我贴的错误信息系统性定位根因：先复现、再缩小范围；修复前先说明根因。",
+      "submit": true
+    },
+    {
+      "label": "性能分析",
+      "hotkey": "q",
+      "prompt": "找出当前最热路径的性能瓶颈：先测量再优化，给出前后对比数据。",
+      "submit": true
+    },
+    {
+      "label": "解释架构",
+      "hotkey": "x",
+      "prompt": "解释这个仓库：模块划分、关键数据流、要改某类东西该去哪里，面向新人。",
+      "submit": true
+    },
+    {
+      "label": "仓库",
+      "hotkey": "a",
+      "url": "https://github.com/tangjianfang/claudecode-statusline"
+    },
+    {
+      "label": "议题",
+      "hotkey": "i",
+      "url": "https://github.com/tangjianfang/claudecode-statusline/issues"
+    },
+    {
+      "label": "git状态",
+      "hotkey": "g",
+      "run": [
+        "git",
+        "status",
+        "-sb"
+      ]
+    },
+    {
+      "label": "同步拉取",
+      "hotkey": "y",
+      "run": [
+        "git",
+        "pull",
+        "--ff-only"
+      ]
+    },
+    {
+      "label": "语法检查",
+      "hotkey": "j",
+      "run": [
+        "npm",
+        "run",
+        "check"
+      ]
+    },
+    {
+      "label": "构建示例",
+      "hotkey": "v",
+      "run": [
+        "npm",
+        "run",
+        "build"
+      ]
+    },
+    {
+      "label": "其他命令",
+      "hotkey": "z",
+      "group": "misc",
+      "run": [
+        "node",
+        "--version"
+      ]
+    }
+  ]
+}
+`,
 `{
   "_doc": "cc-statusline mod buttons. Actions: pane=<pane id> | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. hotkey: one digit/lowercase letter, works while the band holds focus (ctrl+x). Reload with /ccsl-buttons.",
   "buttons": [
@@ -477,6 +628,12 @@ function displayUrl(url) {
   return bare.length > 42 ? clip(bare, 41) + '…' : bare;
 }
 
+// The argv a run button will execute, shown beside its label.
+function displayRun(argv) {
+  const s = argv.join(' ');
+  return s.length > 36 ? clip(s, 35) + '…' : s;
+}
+
 function browserArgv(url) {
   if (process.platform === 'win32') return ['cmd', '/c', 'start', '', url];
   if (process.platform === 'darwin') return ['open', url];
@@ -489,11 +646,11 @@ function launcherRows() {
   const secs = sectionModel();
   let n = 0;
   for (const s of secs) {
-    n += 1; // header
+    n += 3; // header + the card's two border rows
     n += TWO_COLUMN.has(s.key) ? Math.ceil(s.items.length / 2) : s.items.length;
   }
   if (secs.some(s => s.key === 'run') && lastRun) n += 1;
-  return Math.max(6, Math.min(30, n + 2));
+  return Math.max(6, Math.min(34, n + 1));
 }
 
 export function register(on) {
@@ -598,9 +755,15 @@ export function register(on) {
   // The launcher's sections as element trees — shared shape by the pane and
   // the band fallback. The press factory is handed in from the hook that
   // bound $ (helpers never receive $ nouns); this layer only lays out.
+  // Each section is a CARD: rounded border in the section color, colored
+  // bold header inside, then the buttons — two aligned columns for quick and
+  // prompts (fixed-width cells, wrapping below ~44 cols), one per line for
+  // links and commands with the target shown dim beside the label (bookmark
+  // address / the actual argv). No emoji in button labels: terminals render
+  // them at inconsistent widths and they collide with the text. The finished
+  // command's result line is colored by exit code — green done, red failed.
   function sectionEls(ui, pressButton, keyPrefix) {
-    const els = [];
-    sectionModel().forEach((s, si) => {
+    return sectionModel().map((s, si) => {
       const kids = [
         ui.Text({
           key: `${keyPrefix}-h-${s.key}`,
@@ -616,12 +779,13 @@ export function register(on) {
           plain: true,
           onPress: pressButton(b),
         };
-        return b.url
+        const detail = b.url ? displayUrl(b.url) : Array.isArray(b.run) ? displayRun(b.run) : null;
+        return detail
           ? ui.Button({
               ...common,
               children: [
                 b.label,
-                ui.Text({ key: `ccsl-url-${common.key}`, dimColor: true, children: `  ${displayUrl(b.url)}` }),
+                ui.Text({ key: `ccsl-det-${common.key}`, dimColor: true, children: `  ${detail}` }),
               ],
             })
           : ui.Button({ ...common, label: b.label });
@@ -632,8 +796,14 @@ export function register(on) {
             ui.Box({
               key: `${keyPrefix}-row-${s.key}-${ri}`,
               flexDirection: 'row',
-              children: row.flatMap((b, i) =>
-                i ? [ui.Text({ key: `${keyPrefix}-sp-${s.key}-${ri}-${i}`, children: '   ' }), buttonEl(b)] : [buttonEl(b)]
+              flexWrap: 'wrap',
+              children: row.map((b, i) =>
+                ui.Box({
+                  key: `${keyPrefix}-cell-${s.key}-${ri}-${i}`,
+                  width: 20,
+                  marginRight: i ? 0 : 2,
+                  children: [buttonEl(b)],
+                })
               ),
             })
           );
@@ -645,21 +815,21 @@ export function register(on) {
         kids.push(
           ui.Text({
             key: `${keyPrefix}-lastrun`,
-            dimColor: true,
+            color: lastRun.exitCode === 0 ? 'green' : 'red',
             children: `↳ ${lastRun.label}: exit ${lastRun.exitCode}${lastRun.tail ? ` · ${lastRun.tail}` : ''}`,
           })
         );
       }
-      els.push(
-        ui.Box({
-          key: `${keyPrefix}-sec-${s.key}`,
-          flexDirection: 'column',
-          marginTop: si ? 1 : 0,
-          children: kids,
-        })
-      );
+      return ui.Box({
+        key: `${keyPrefix}-sec-${s.key}`,
+        borderStyle: 'round',
+        borderColor: s.style.color,
+        flexDirection: 'column',
+        paddingX: 1,
+        marginTop: si ? 1 : 0,
+        children: kids,
+      });
     });
-    return els;
   }
 
   // The launcher pane: every section in one view + hint. Answering (no next)
@@ -785,7 +955,7 @@ export function register(on) {
             $.ui
               .open({
                 id: BUTTONS_PANE,
-                title: 'Buttons',
+                title: '✳ 启动器',
                 focus: true,
                 closeOnEscape: true,
                 rows: launcherRows(),
