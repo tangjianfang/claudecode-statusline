@@ -1,6 +1,6 @@
 {
   "name": "@tangjianfang/claudecode-statusline",
-  "version": "3.0.3",
+  "version": "3.1.0",
   "description": "Custom status line for Claude Code: shows model, output TPS, token/cost totals, git branch, context usage and prompt-cache health, plus a pricing updater",
   "main": "statusline.js",
   "bin": {

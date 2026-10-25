@@ -90,6 +90,7 @@ v3.0.0 ships a Claude Code **mod** alongside the status line. It runs inside Cla
 - **Hotkeyed buttons above the prompt** — `[u]sage` / `[c]ost` open a usage pane instantly, even while Claude is working
 - **`/ccsl-usage` command** — opens the pane; runs with zero model turns
 - **Per-request usage pane** — a sparkline of output tokens per request plus cumulative totals, recorded directly from each model request (no transcript parsing)
+- **Custom buttons** — edit `~/.claude/ccsl-buttons.json` (auto-created with examples) to add your own: open panes, insert or send prompts, open URLs, or run host commands. `/ccsl-buttons` reloads it
 
 Install/update it with the same command as the status line — `cc-statusline --install` offers to copy `mod/` to `~/.claude/skills/cc-statusline-mod/`, which Claude Code loads at every startup. Preview it for one session instead with:
 
