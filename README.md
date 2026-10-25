@@ -91,7 +91,7 @@ A Claude Code **mod** shipped alongside the status line. It runs inside Claude C
 
 `cc-statusline --install` offers to copy it to `~/.claude/skills/cc-statusline-mod/` (loaded at every startup); preview one session with `claude --plugin-dir /path/to/node_modules/@tangjianfang/claudecode-statusline/mod`. Then:
 
-1. Press `m` (or click `✳`, the accent-colored star above the prompt) — the launcher opens
+1. Press `m` (or click `＊`, the accent-colored star at the left of the band) — the launcher opens
 2. Press a hotkey or click. Commands and links run at once; prompts and mode switches **fill the composer** — review, then Enter. Esc closes
 
 What you see — every function on screen at once, grouped into colored cards:
@@ -129,7 +129,7 @@ On a terminal too narrow to seat the pane, the same view expands inline in the b
 
 A mod can't set permission modes (API limitation) — `p` opens Claude Code's permissions dialog, which is the shortest path.
 
-`/ccsl-usage` opens the usage pane (per-request output sparkline + cumulative totals, no model turn). Optional key binding in `~/.claude/keybindings.json`:
+`/ccsl-usage` opens the usage pane: per-request output sparkline, cumulative totals, **cost** (`$X 会话 · $Y 累计` — computed from the same `~/.claude/pricing.json` the status line uses; run `pricing-updater` once to generate it) and the context estimate `ctx n/200k (%)`. A toast warns once when the context passes 80% and 90% of the window (set `contextWindow` in `~/.claude/ccsl-buttons.json`; re-arms after a `/compact`). While a turn runs, a dim `· 运行中` marks the band. Optional key binding:
 
 ```json
 {
@@ -158,7 +158,7 @@ Buttons live in `~/.claude/ccsl-buttons.json` (auto-created with the template ab
 ```
 
 - `slash` fills `/<command>` (fast, permissions, model, compact…); `prompt` fills the text — Enter sends it, nothing runs unconfirmed; `url`, `run`, `pane` open a bookmark, a host command, or a mod pane at once
-- `group` gives a button its own section; `toggle` restyles the band button (label/hotkey)
+- `group` gives a button its own section; `toggle` restyles the band button (label/hotkey); `contextWindow` sets the token window for the budget alerts (default 200000)
 - hotkeys: one digit or lowercase letter, live while the launcher holds focus
 
 Edit the file, then `/ccsl-buttons` reloads it. A file that still byte-matches an old factory template upgrades itself automatically on load — your edits are never overwritten.

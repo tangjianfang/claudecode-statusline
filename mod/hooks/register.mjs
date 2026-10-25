@@ -60,8 +60,19 @@ const PANE = 'ccsl-usage';
 const BUTTONS_PANE = 'ccsl-buttons';
 const MAX_POINTS = 240;
 
-// Per-request usage records: [{ ts, out, in, cacheR, cacheW }]
+// Per-request usage records: [{ ts, out, in, cacheR, cacheW, cost?, ctx? }]
 let history = [];
+
+// Pricing table (~/.claude/pricing.json — the same file the status line
+// reads and pricing-updater refreshes) and cost accumulated across sessions.
+let pricing = null;
+let costAll = 0; // dollars, persisted via $.store
+
+// Context-budget alerting: ctxWindow is the model's window (config
+// "contextWindow", default 200k); a request's in+cacheR approximates the
+// context it sat in. Each threshold toasts once per fill cycle.
+let ctxWindow = 200000;
+let warnedCtx = 0;
 
 // Loaded button config (module state; session.start + /ccsl-buttons load it).
 let buttons = null;
@@ -108,9 +119,34 @@ function totals() {
       in: a.in + r.in,
       cacheR: a.cacheR + r.cacheR,
       cacheW: a.cacheW + r.cacheW,
+      cost: a.cost + (r.cost || 0),
     }),
-    { out: 0, in: 0, cacheR: 0, cacheW: 0 }
+    { out: 0, in: 0, cacheR: 0, cacheW: 0, cost: 0 }
   );
+}
+
+// Pricing-model resolution, ported from statusline.js: exact name, then the
+// longest case-insensitive substring (so "glm-5.3[1m]" matches "glm-5.3").
+// rates: per-1M-token dollars { in, out, cacheRead, cacheWrite }.
+function resolvePricing(model, table) {
+  if (!model || !table) return null;
+  if (table[model]) return table[model];
+  const lower = model.toLowerCase();
+  let best = null;
+  for (const key of Object.keys(table)) {
+    if (lower.includes(key.toLowerCase()) && (!best || key.length > best.length)) best = key;
+  }
+  return best ? table[best] : null;
+}
+
+// Dollars for one usage record: per-1M rates × token counts.
+function computeCost(rec, rates) {
+  const micros =
+    (rates.in || 0) * rec.in +
+    (rates.out || 0) * rec.out +
+    (rates.cacheRead || 0) * rec.cacheR +
+    (rates.cacheWrite || 0) * rec.cacheW;
+  return micros / 1e6;
 }
 
 function fmt(n) {
@@ -151,14 +187,19 @@ function defaultButtons() {
 // the pointer — a styled child keeps its own color and the selection state
 // lands beside the icon instead of on it (real-machine-verified).
 function defaultToggle() {
-  return { label: '✳', hotkey: 'm' };
+  // ＊ is fullwidth — exactly two cells on every terminal, so it sits dead
+  // center inside the button's brackets. ✳ (U+2733) is East-Asian-ambiguous:
+  // engines count one cell, CJK-configured fonts draw two, and the right
+  // bracket drifts (real-machine-verified).
+  return { label: '＊', hotkey: 'm' };
 }
 
 function configTemplate() {
   return `${JSON.stringify(
     {
-      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (fills /<command> — Enter runs it; permissions opens CC dialog, no mode setter API yet) | prompt=<text> (fills the composer — Enter sends; nothing runs unconfirmed) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button (label/hotkey). hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.',
-      toggle: { label: '✳', hotkey: 'm' },
+      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (fills /<command> — Enter runs it; permissions opens CC dialog, no mode setter API yet) | prompt=<text> (fills the composer — Enter sends; nothing runs unconfirmed) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button (label/hotkey). contextWindow: model context window in tokens, for the 80%/90% budget alerts (default 200000). hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.',
+      toggle: { label: '＊', hotkey: 'm' },
+      contextWindow: 200000,
       buttons: [
         { label: '快速模式', hotkey: 'f', slash: 'fast' },
         { label: '权限设置', hotkey: 'p', slash: 'permissions' },
@@ -195,6 +236,146 @@ function configTemplate() {
 // leaving a stale demo behind (a hand-edited file never matches and is always
 // preserved). When configTemplate() changes, append the outgoing template.
 const LEGACY_TEMPLATES = [
+`{
+  "_doc": "cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (fills /<command> — Enter runs it; permissions opens CC dialog, no mode setter API yet) | prompt=<text> (fills the composer — Enter sends; nothing runs unconfirmed) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button (label/hotkey). hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.",
+  "toggle": {
+    "label": "✳",
+    "hotkey": "m"
+  },
+  "buttons": [
+    {
+      "label": "快速模式",
+      "hotkey": "f",
+      "slash": "fast"
+    },
+    {
+      "label": "权限设置",
+      "hotkey": "p",
+      "slash": "permissions"
+    },
+    {
+      "label": "模型选择",
+      "hotkey": "o",
+      "slash": "model"
+    },
+    {
+      "label": "压缩上下文",
+      "hotkey": "k",
+      "slash": "compact"
+    },
+    {
+      "label": "用量面板",
+      "hotkey": "u",
+      "pane": "ccsl-usage"
+    },
+    {
+      "label": "继续任务",
+      "hotkey": "n",
+      "prompt": "继续上次中断的任务：先回顾我们最近在做什么，然后接着完成。"
+    },
+    {
+      "label": "测试并修复",
+      "hotkey": "t",
+      "prompt": "运行完整测试套件；若有失败：定位根因后修复，再跑一遍直到全绿。总结改了什么。"
+    },
+    {
+      "label": "审查改动",
+      "hotkey": "r",
+      "prompt": "审查当前 git diff：找正确性 bug、边界情况和安全隐患，按严重程度列出，先不改代码。"
+    },
+    {
+      "label": "修复告警",
+      "hotkey": "l",
+      "prompt": "运行 lint 和类型检查，修复所有告警，不改变行为。"
+    },
+    {
+      "label": "重构文件",
+      "hotkey": "w",
+      "prompt": "重构当前文件：提高可读性、消除重复，不改变任何行为；改完运行测试验证。"
+    },
+    {
+      "label": "补文档",
+      "hotkey": "d",
+      "prompt": "为刚才的改动更新文档：面向新用户，简明，附使用示例。"
+    },
+    {
+      "label": "写提交",
+      "hotkey": "s",
+      "prompt": "把当前改动写成一条 conventional commit 并提交（不要推送），提交信息说明为什么这样改。"
+    },
+    {
+      "label": "定位bug",
+      "hotkey": "b",
+      "prompt": "根据我贴的错误信息系统性定位根因：先复现、再缩小范围；修复前先说明根因。"
+    },
+    {
+      "label": "性能分析",
+      "hotkey": "q",
+      "prompt": "找出当前最热路径的性能瓶颈：先测量再优化，给出前后对比数据。"
+    },
+    {
+      "label": "解释架构",
+      "hotkey": "x",
+      "prompt": "解释这个仓库：模块划分、关键数据流、要改某类东西该去哪里，面向新人。"
+    },
+    {
+      "label": "仓库",
+      "hotkey": "a",
+      "url": "https://github.com/tangjianfang/claudecode-statusline"
+    },
+    {
+      "label": "议题",
+      "hotkey": "i",
+      "url": "https://github.com/tangjianfang/claudecode-statusline/issues"
+    },
+    {
+      "label": "git状态",
+      "hotkey": "g",
+      "run": [
+        "git",
+        "status",
+        "-sb"
+      ]
+    },
+    {
+      "label": "同步拉取",
+      "hotkey": "y",
+      "run": [
+        "git",
+        "pull",
+        "--ff-only"
+      ]
+    },
+    {
+      "label": "语法检查",
+      "hotkey": "j",
+      "run": [
+        "npm",
+        "run",
+        "check"
+      ]
+    },
+    {
+      "label": "构建示例",
+      "hotkey": "v",
+      "run": [
+        "npm",
+        "run",
+        "build"
+      ]
+    },
+    {
+      "label": "其他命令",
+      "hotkey": "z",
+      "group": "misc",
+      "run": [
+        "node",
+        "--version"
+      ]
+    }
+  ]
+}
+`,
 `{
   "_doc": "cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (submits /<command>; permissions opens CC dialog — no mode setter API yet) | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.",
   "toggle": {
@@ -730,6 +911,9 @@ function applyConfigText(text) {
     : [];
   buttons = list.length ? list : defaultButtons();
   toggle = normalizeToggle(parsed.toggle);
+  if (typeof parsed.contextWindow === 'number' && parsed.contextWindow > 0) {
+    ctxWindow = parsed.contextWindow;
+  }
   return buttons.length;
 }
 
@@ -812,6 +996,17 @@ export function register(on) {
     await safe(async () => {
       const saved = await $.store.get('usage-history');
       if (Array.isArray(saved)) history = saved.filter(r => r && typeof r.out === 'number');
+      const savedCost = await $.store.get('usage-cost-total');
+      if (typeof savedCost === 'number') costAll = savedCost;
+    }, null);
+    // The pricing table the status line and pricing-updater maintain; without
+    // it the cost line just says so (tokens still count).
+    await safe(async () => {
+      const home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME'));
+      if (!home) return;
+      const txt = await $.fs.read(`${home}/.claude/pricing.json`.replace(/\\/g, '/'));
+      const p = JSON.parse(txt);
+      if (p && typeof p === 'object') pricing = p;
     }, null);
     // Load button config, creating the file with a working engineering
     // template when it doesn't exist yet so customizing is just "edit this
@@ -864,11 +1059,31 @@ export function register(on) {
     try {
       const rec = usageFrom(e) || usageFrom(result);
       if (rec) {
+        // Cost rides the record when the pricing table knows the model
+        // (e.model is the engine's resolved name for this step); in+cacheR
+        // approximates the context the request sat in.
+        const rates = resolvePricing(e.model, pricing);
+        if (rates) rec.cost = computeCost(rec, rates);
+        rec.ctx = rec.in + rec.cacheR;
         history.push(rec);
         if (history.length > MAX_POINTS) history = history.slice(-MAX_POINTS);
-        await safe(async () => {
-          await $.store.set('usage-history', history.slice(-MAX_POINTS));
-        }, null);
+        if (rec.cost) {
+          costAll += rec.cost;
+          await safe(async () => {
+            await $.store.set('usage-cost-total', costAll);
+          }, null);
+        }
+        // Context-budget alert: one toast per threshold per fill cycle; a
+        // drop back under 70% (a compact, a new session) re-arms them.
+        const ratio = rec.ctx / ctxWindow;
+        if (ratio >= 0.9 && warnedCtx < 0.9) {
+          warnedCtx = 0.9;
+          $.ui.toast(`ccsl: 上下文已用 ${Math.round(ratio * 100)}% — 建议 /compact 压缩`);
+        } else if (ratio >= 0.8 && warnedCtx < 0.8) {
+          warnedCtx = 0.8;
+          $.ui.toast(`ccsl: 上下文已用 ${Math.round(ratio * 100)}%`);
+        }
+        if (ratio < 0.7) warnedCtx = 0;
         await safe(async () => {
           await $.ui.invalidate('ui.render');
         }, null);
@@ -1128,12 +1343,17 @@ export function register(on) {
         }
       },
     });
+    // The toggle stays at the LEFT of the band; while a model turn runs, a
+    // dim marker beside it says so (e.props.isWorking is the engine's word).
+    const rowKids = [toggleBtn];
+    if (e.props && e.props.isWorking) {
+      rowKids.push(ui.Text({ key: 'ccsl-working', dimColor: true, children: ' · 运行中' }));
+    }
     const kids = [
       ui.Box({
         key: 'ccsl-band-row',
         flexDirection: 'row',
-        justifyContent: 'center',
-        children: [toggleBtn],
+        children: rowKids,
       }),
     ];
     if (inlineUp) {
@@ -1227,6 +1447,10 @@ export function register(on) {
     const t = totals();
     const recent = history.slice(-60);
     const bars = spark(recent.map(r => r.out));
+    const last = history[history.length - 1];
+    const ctxTxt = last && last.ctx
+      ? `ctx ${fmt(last.ctx)}/${fmt(ctxWindow)} (${Math.min(99, Math.round((last.ctx / ctxWindow) * 100))}%)`
+      : null;
     return ui.Box({
       key: 'ccsl-pane',
       flexDirection: 'column',
@@ -1247,6 +1471,16 @@ export function register(on) {
             ui.Text({ key: 'ccsl-tot-cw', color: 'yellow', children: `cacheW ${fmt(t.cacheW)}` }),
           ],
         }),
+        ui.Text({
+          key: 'ccsl-cost',
+          color: 'yellow',
+          children: pricing
+            ? `cost $${t.cost.toFixed(2)} 会话 · $${costAll.toFixed(2)} 累计`
+            : 'cost — 无定价表（~/.claude/pricing.json，跑一次 pricing-updater 生成）',
+        }),
+        ...(ctxTxt
+          ? [ui.Text({ key: 'ccsl-ctx', dimColor: true, children: ctxTxt })]
+          : []),
         ui.Text({ key: 'ccsl-hint', dimColor: true, children: 'Esc closes · /ccsl-usage reopens' }),
       ],
     });
