@@ -3,13 +3,21 @@
 // Runs INSIDE Claude Code (a plugin "mod"), unlike statusline.js which is a
 // subprocess. That buys two things the status line can't do:
 //   * a single toggle button above the prompt (the AbovePrompt band) that
-//     opens a pane of quick-action buttons, each with its own hotkey,
+//     opens a launcher pane of quick-action buttons, each with its own hotkey,
 //   * direct sight of every model request via `turn.step`, so usage stats
 //     arrive with zero transcript parsing.
 //
+// The launcher: one action per line, `hotkey: label` (plain buttons, the
+// engine's survey idiom), grouped by action type under dim headers — usable
+// at any terminal width. If the engine won't place the pane (panes opened
+// outside the person's press dispatch wait undrawn below 144 columns, and
+// open() then answers { isPlaced: false, reason }), the same sections expand
+// INLINE in the band instead — the launcher is reachable at any width, and
+// the engine's reason is toasted rather than swallowed.
+//
 // Custom buttons: ~/.claude/ccsl-buttons.json (auto-created with examples on
 // first load; /ccsl-buttons reloads it). The band carries only the toggle
-// (restyled via "toggle"); everything else lives in the buttons pane, its
+// (restyled via "toggle"); everything else lives in the launcher, its
 // sections auto-grouped by action type — panes, prompts, links, commands —
 // with an optional "group": "name" field moving a button to its own section.
 // Each button is one of:
@@ -18,7 +26,7 @@
 //   { label, hotkey, prompt: "text", submit: true }          send immediately
 //   { label, hotkey, url:    "https://..." }                 open in browser
 //   { label, hotkey, run:    ["npm", "test"] }               host command
-// Prompt buttons close the pane first — a picked prompt means back to the
+// Prompt buttons close the launcher first — a picked prompt means back to the
 // conversation; the other kinds keep it open.
 //
 // API discipline (learned from Claude Code's module validator + runtime):
@@ -32,9 +40,10 @@
 //     the chain drew — wrap it to compose.
 //   * command.run matches on { command: <name> }, answers with { text }, and
 //     its registration needs a .catch (it's a gating event).
-//   * the band toggle reads the engine's own pane record ($.ui.panes()), not
-//     module state — a person's Esc and a reload that leaves the pane up both
-//     show up there.
+//   * the engine only credits a pane open to the person's press while the
+//     call leaves the press dispatch: the toggle decides from tracked state
+//     and issues open/close SYNCHRONOUSLY (never after an await), then reads
+//     the result's isPlaced for the inline fallback.
 //   * every button action toasts — a silent failure is an undiagnosable one.
 // Anything that fails here degrades to "not shown" and never breaks a turn.
 
@@ -48,6 +57,12 @@ let history = [];
 // Loaded button config (module state; session.start + /ccsl-buttons load it).
 let buttons = null;
 let toggle = null;
+
+// Launcher visibility. paneUp tracks the engine's pane (refreshed from
+// $.ui.panes() at every band draw, set by our own open/close); inlineUp is
+// the band-embedded fallback used when the engine won't place the pane.
+let paneUp = false;
+let inlineUp = false;
 
 // Run fn, swallow any throw, return fallback. Mods must never break a turn.
 async function safe(fn, fallback) {
@@ -111,8 +126,8 @@ function defaultButtons() {
   ];
 }
 
-// The band's one toggle button — the pane stays one keypress away even with
-// everything else customized away.
+// The band's one toggle button — the launcher stays one keypress away even
+// with everything else customized away.
 function defaultToggle() {
   return { label: '☰', hotkey: 'm' };
 }
@@ -120,7 +135,7 @@ function defaultToggle() {
 function configTemplate() {
   return `${JSON.stringify(
     {
-      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the buttons pane. Actions: pane=<pane id> | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Optional group=<name> overrides the type section; toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus. Reload with /ccsl-buttons.',
+      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the launcher. Actions: pane=<pane id> | prompt=<text> (+submit:true to send at once) | url=<https://...> | run=[argv]. Optional group=<name> overrides the type section; toggle restyles the band button. hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus. Reload with /ccsl-buttons.',
       toggle: { label: '☰', hotkey: 'm' },
       buttons: [
         { label: 'usage', hotkey: 'u', pane: PANE },
@@ -181,7 +196,7 @@ function applyConfigText(text) {
   return buttons.length;
 }
 
-// Which pane section a button lands in: its action type, or its custom group.
+// Which launcher section a button lands in: its action type, or its group.
 function sectionKey(b) {
   if (b.group) return b.group;
   if (b.pane) return 'pane';
@@ -209,6 +224,39 @@ function browserArgv(url) {
   if (process.platform === 'win32') return ['cmd', '/c', 'start', '', url];
   if (process.platform === 'darwin') return ['open', url];
   return ['xdg-open', url];
+}
+
+// One button's visible label: the two built-ins carry live totals; a
+// send-now prompt says so; everything else shows its configured label as-is.
+function buttonLabel(b, t) {
+  if (b.pane === PANE) {
+    if (b.hotkey === 'u') return `usage ${fmt(t.out)}o`;
+    if (b.hotkey === 'c') return `tokens ${fmt(t.in + t.out + t.cacheR + t.cacheW)}`;
+  }
+  if (typeof b.prompt === 'string' && b.submit) return `${b.label}(send)`;
+  return b.label;
+}
+
+// The launcher's sections as plain data: { key, title, items: [{b, label}] }.
+// Pure — the ELEMENT tree is built inside each hook, where $ lives ($ nouns
+// must never reach a helper; only the hook's own scope may call them).
+function sectionModel() {
+  const list = buttons || defaultButtons();
+  const t = totals();
+  return sectionOrder(list).map(key => ({
+    key,
+    title: SECTION_TITLES.get(key) || `◆ ${key}`,
+    items: list.filter(b => sectionKey(b) === key).map(b => ({ b, label: buttonLabel(b, t) })),
+  }));
+}
+
+// Content height the pane wants: per section a header + its buttons, blank
+// lines between, one hint line, a line of slack.
+function launcherRows() {
+  return Math.max(
+    6,
+    Math.min(30, sectionModel().reduce((n, s) => n + 1 + s.items.length, 0) + 2)
+  );
 }
 
 export function register(on) {
@@ -293,49 +341,232 @@ export function register(on) {
     return { text: msg };
   }).catch(() => {});
 
+  // The launcher pane: the sections + hint. Answering (no next) means we own
+  // this body entirely. The press factory lives INSIDE the hook so every $
+  // call stays lexically in the handler that bound $.
+  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
+    if (e.requestId !== BUTTONS_PANE) return next(e);
+    const ui = await safe(async () => $.ui.resolve(e), null);
+    if (!ui || !ui.Box || !ui.Button || !ui.Text) return next(e);
+    const pressButton = b => () => {
+      // Dispatch by action type. Every $ call happens right here (the
+      // $-noun discipline), and every path toasts — silent failures were
+      // how dead buttons stayed undiagnosable.
+      try {
+        if (b.url) {
+          $.ui.toast(`opening ${b.url}`);
+          $.process
+            .run(browserArgv(b.url))
+            .then(() => {})
+            .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+        } else if (typeof b.prompt === 'string') {
+          // Picked a prompt → back to the conversation: collapse whichever
+          // launcher form is up.
+          if (inlineUp) {
+            inlineUp = false;
+            $.ui.invalidate('ui.render');
+          }
+          if (paneUp) {
+            paneUp = false;
+            $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+          }
+          if (b.submit) {
+            $.prompt.submit({ text: b.prompt });
+            $.ui.toast(`sent: ${b.prompt.slice(0, 60)}`);
+          } else {
+            $.prompt
+              .fill({ text: b.prompt, mode: 'insert' })
+              .then(() => $.ui.toast(`filled — Enter to send`))
+              .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+          }
+        } else if (Array.isArray(b.run)) {
+          $.ui.toast(`${b.label}: running…`);
+          $.process
+            .run(b.run, { timeoutMs: 600000 })
+            .then(r => {
+              const tail = ((r.stdout || '') + (r.stderr || '')).trim().slice(-160);
+              $.ui.toast(`${b.label}: exit ${r.exitCode}${tail ? ` · ${tail}` : ''}`);
+            })
+            .catch(err => $.ui.toast(`${b.label}: ${err && err.message}`));
+        } else {
+          const paneId = b.pane || PANE;
+          $.ui
+            .open({ id: paneId, title: 'Usage', focus: true, closeOnEscape: true })
+            .then(() => $.ui.toast(`${b.label}: opened`))
+            .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+        }
+      } catch (err) {
+        $.ui.toast(`ccsl: ${err && err.message}`);
+      }
+    };
+    const sections = sectionModel().map(s =>
+      ui.Box({
+        key: `ccsl-sec-${s.key}`,
+        flexDirection: 'column',
+        children: [
+          ui.Text({ key: `ccsl-sec-h-${s.key}`, dimColor: true, children: s.title }),
+          ...s.items.map(it =>
+            ui.Button({
+              key: `ccsl-btn-${it.b.hotkey || it.b.label}`,
+              label: it.label,
+              hotkey: it.b.hotkey,
+              plain: true,
+              onPress: pressButton(it.b),
+            })
+          ),
+        ],
+      })
+    );
+    const kids = [];
+    sections.forEach((s, i) => {
+      if (i) kids.push(ui.Text({ key: `ccsl-gap-${i}`, children: ' ' }));
+      kids.push(s);
+    });
+    kids.push(
+      ui.Text({
+        key: 'ccsl-btns-hint',
+        dimColor: true,
+        children: '编辑 ~/.claude/ccsl-buttons.json · /ccsl-buttons 重载 · Esc 关闭',
+      })
+    );
+    return ui.Box({ key: 'ccsl-buttons-pane', flexDirection: 'column', children: kids });
+  });
+
   // Quick-action band above the prompt: ONE toggle button that opens and
-  // closes the buttons pane. A draw site is answered with a tree: compose
-  // ours UNDER whatever the rest of the chain drew (next(e) resolves to their
-  // tree), and yield entirely while a survey holds the band — the props table
-  // says a hook yields to it.
+  // closes the launcher. The open/close must leave this press dispatch
+  // synchronously — the engine credits a pane open to the person's press
+  // only then; anything after an await counts as the plugin acting alone and
+  // waits undrawn below 144 columns. So the toggle branches on tracked state
+  // and reads the open() result afterwards for the inline fallback. A draw
+  // site is answered with a tree: compose ours UNDER whatever the rest of
+  // the chain drew, and yield entirely while a survey holds the band.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props && e.props.hasSurvey) return next(e);
     const ui = await safe(async () => $.ui.resolve(e), null);
-    if (!ui || !ui.Box || !ui.Button) return next(e);
+    if (!ui || !ui.Box || !ui.Button || !ui.Text) return next(e);
+    // Re-sync with the engine's record (Esc closes, reloads, wider terms).
+    const panes = await safe(async () => await $.ui.panes(), null);
+    if (panes) paneUp = panes.some(p => p.id === BUTTONS_PANE && p.isPlaced !== false);
     const t = toggle || defaultToggle();
-    const band = ui.Box({
-      key: 'ccsl-band',
-      flexDirection: 'row',
-      children: [
-        ui.Button({
-          key: 'ccsl-toggle',
-          label: t.label,
-          hotkey: t.hotkey,
-          onPress: () => {
-            // Toggle by the engine's pane record — the person's Esc close and
-            // a reload that left the pane up both live there, module state
-            // would go stale. Every $ call happens right here ($-noun rule).
-            try {
-              $.ui
-                .panes()
-                .then(panes =>
-                  panes.some(p => p.id === BUTTONS_PANE)
-                    ? $.ui.close({ id: BUTTONS_PANE })
-                    : $.ui.open({
-                        id: BUTTONS_PANE,
-                        title: 'Buttons',
-                        focus: true,
-                        closeOnEscape: true,
-                      })
-                )
-                .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-            } catch (err) {
-              $.ui.toast(`ccsl: ${err && err.message}`);
-            }
-          },
-        }),
-      ],
+    const toggleBtn = ui.Button({
+      key: 'ccsl-toggle',
+      label: t.label,
+      hotkey: t.hotkey,
+      onPress: () => {
+        // Synchronous dispatch — no await before open/close, ever.
+        try {
+          if (paneUp) {
+            paneUp = false;
+            $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+          } else if (inlineUp) {
+            inlineUp = false;
+            $.ui.invalidate('ui.render');
+          } else {
+            paneUp = true;
+            $.ui
+              .open({
+                id: BUTTONS_PANE,
+                title: 'Buttons',
+                focus: true,
+                closeOnEscape: true,
+                rows: launcherRows(),
+              })
+              .then(r => {
+                if (r && r.isPlaced === false) {
+                  paneUp = false;
+                  inlineUp = true;
+                  $.ui.toast(`ccsl: 面板暂不摆放 (${r && r.reason}) — 已在带内展开`);
+                  $.ui.invalidate('ui.render');
+                }
+              })
+              .catch(err => {
+                paneUp = false;
+                $.ui.toast(`ccsl: ${err && err.message}`);
+              });
+          }
+        } catch (err) {
+          paneUp = false;
+          $.ui.toast(`ccsl: ${err && err.message}`);
+        }
+      },
     });
+    const kids = [ui.Box({ key: 'ccsl-band-row', flexDirection: 'row', children: [toggleBtn] })];
+    if (inlineUp) {
+      // The inline fallback mirrors the pane's launcher — same sections, same
+      // dispatch, duplicated here because the press factory must bind this
+      // hook's $ (helpers never receive $ nouns).
+      const pressButton = b => () => {
+        try {
+          if (b.url) {
+            $.ui.toast(`opening ${b.url}`);
+            $.process
+              .run(browserArgv(b.url))
+              .then(() => {})
+              .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+          } else if (typeof b.prompt === 'string') {
+            if (inlineUp) {
+              inlineUp = false;
+              $.ui.invalidate('ui.render');
+            }
+            if (paneUp) {
+              paneUp = false;
+              $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+            }
+            if (b.submit) {
+              $.prompt.submit({ text: b.prompt });
+              $.ui.toast(`sent: ${b.prompt.slice(0, 60)}`);
+            } else {
+              $.prompt
+                .fill({ text: b.prompt, mode: 'insert' })
+                .then(() => $.ui.toast(`filled — Enter to send`))
+                .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+            }
+          } else if (Array.isArray(b.run)) {
+            $.ui.toast(`${b.label}: running…`);
+            $.process
+              .run(b.run, { timeoutMs: 600000 })
+              .then(r => {
+                const tail = ((r.stdout || '') + (r.stderr || '')).trim().slice(-160);
+                $.ui.toast(`${b.label}: exit ${r.exitCode}${tail ? ` · ${tail}` : ''}`);
+              })
+              .catch(err => $.ui.toast(`${b.label}: ${err && err.message}`));
+          } else {
+            const paneId = b.pane || PANE;
+            $.ui
+              .open({ id: paneId, title: 'Usage', focus: true, closeOnEscape: true })
+              .then(() => $.ui.toast(`${b.label}: opened`))
+              .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+          }
+        } catch (err) {
+          $.ui.toast(`ccsl: ${err && err.message}`);
+        }
+      };
+      sectionModel().forEach((s, i) => {
+        if (i) kids.push(ui.Text({ key: `ccsl-inline-gap-${i}`, children: ' ' }));
+        kids.push(
+          ui.Box({
+            key: `ccsl-inline-${s.key}`,
+            flexDirection: 'column',
+            children: [
+              ui.Text({ key: `ccsl-inline-h-${s.key}`, dimColor: true, children: s.title }),
+              ...s.items.map(it =>
+                ui.Button({
+                  key: `ccsl-btn-${it.b.hotkey || it.b.label}`,
+                  label: it.label,
+                  hotkey: it.b.hotkey,
+                  plain: true,
+                  onPress: pressButton(it.b),
+                })
+              ),
+            ],
+          })
+        );
+      });
+      kids.push(
+        ui.Text({ key: 'ccsl-inline-hint', dimColor: true, children: '再按一次 ☰ 收起' })
+      );
+    }
+    const band = ui.Box({ key: 'ccsl-band', flexDirection: 'column', children: kids });
     const inner = await safe(() => next(e), null);
     if (inner && typeof inner === 'object') {
       return ui.Box({
@@ -345,113 +576,6 @@ export function register(on) {
       });
     }
     return band;
-  });
-
-  // The buttons pane: every configured quick action in typed sections (custom
-  // groups after the four built-ins). Answering (no next) means we own this
-  // body entirely.
-  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
-    if (e.requestId !== BUTTONS_PANE) return next(e);
-    const ui = await safe(async () => $.ui.resolve(e), null);
-    if (!ui || !ui.Box || !ui.Button || !ui.Text) return next(e);
-    const t = totals();
-    const list = buttons || defaultButtons();
-    const order = sectionOrder(list);
-
-    const sections = [];
-    order.forEach((key, i) => {
-      if (i) sections.push(ui.Text({ key: `ccsl-sec-gap-${i}`, children: ' ' }));
-      const title = SECTION_TITLES.get(key) || `◆ ${key}`;
-      const row = [];
-      for (const b of list.filter(x => sectionKey(x) === key)) {
-        if (row.length) row.push(ui.Text({ key: `ccsl-sec-sp-${key}-${row.length}`, children: ' ' }));
-        // Button labels: the two built-ins carry live totals; a send-now
-        // prompt says so; everything else shows its configured label as-is.
-        let label = b.label;
-        if (b.pane === PANE) {
-          if (b.hotkey === 'u') label = `usage ${fmt(t.out)}o`;
-          else if (b.hotkey === 'c') label = `tokens ${fmt(t.in + t.out + t.cacheR + t.cacheW)}`;
-        } else if (typeof b.prompt === 'string' && b.submit) {
-          label = `${b.label}(send)`;
-        }
-        row.push(
-          ui.Button({
-            key: `ccsl-btn-${b.hotkey || b.label}`,
-            label,
-            hotkey: b.hotkey,
-            onPress: () => {
-              // Dispatch by action type. Every $ call happens right here (the
-              // $-noun discipline), and every path toasts — silent failures
-              // were how dead buttons stayed undiagnosable.
-              try {
-                if (b.url) {
-                  $.ui.toast(`opening ${b.url}`);
-                  $.process
-                    .run(browserArgv(b.url))
-                    .then(() => {})
-                    .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-                } else if (typeof b.prompt === 'string') {
-                  // Picked a prompt → back to the conversation; the other
-                  // kinds keep the pane open.
-                  $.ui
-                    .close({ id: BUTTONS_PANE })
-                    .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-                  if (b.submit) {
-                    $.prompt.submit({ text: b.prompt });
-                    $.ui.toast(`sent: ${b.prompt.slice(0, 60)}`);
-                  } else {
-                    $.prompt
-                      .fill({ text: b.prompt, mode: 'insert' })
-                      .then(() => $.ui.toast(`filled — Enter to send`))
-                      .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-                  }
-                } else if (Array.isArray(b.run)) {
-                  $.ui.toast(`${b.label}: running…`);
-                  $.process
-                    .run(b.run, { timeoutMs: 600000 })
-                    .then(r => {
-                      const tail = ((r.stdout || '') + (r.stderr || '')).trim().slice(-160);
-                      $.ui.toast(`${b.label}: exit ${r.exitCode}${tail ? ` · ${tail}` : ''}`);
-                    })
-                    .catch(err => $.ui.toast(`${b.label}: ${err && err.message}`));
-                } else {
-                  const paneId = b.pane || PANE;
-                  $.ui
-                    .open({ id: paneId, title: 'Usage', focus: true, closeOnEscape: true })
-                    .then(() => $.ui.toast(`${b.label}: opened`))
-                    .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
-                }
-              } catch (err) {
-                $.ui.toast(`ccsl: ${err && err.message}`);
-              }
-            },
-          })
-        );
-      }
-      sections.push(
-        ui.Box({
-          key: `ccsl-sec-${key}`,
-          flexDirection: 'column',
-          children: [
-            ui.Text({ key: `ccsl-sec-h-${key}`, dimColor: true, children: title }),
-            ui.Box({ key: `ccsl-sec-row-${key}`, flexDirection: 'row', children: row }),
-          ],
-        })
-      );
-    });
-
-    return ui.Box({
-      key: 'ccsl-buttons-pane',
-      flexDirection: 'column',
-      children: [
-        ...sections,
-        ui.Text({
-          key: 'ccsl-btns-hint',
-          dimColor: true,
-          children: '编辑 ~/.claude/ccsl-buttons.json · /ccsl-buttons 重载 · Esc 关闭',
-        }),
-      ],
-    });
   });
 
   // The usage pane: sparkline of per-request output tokens + colored

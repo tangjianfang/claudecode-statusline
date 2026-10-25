@@ -87,8 +87,8 @@ Claude Code pipes a JSON payload on stdin. Per-message token/timing data isn't i
 
 v3.0.0 ships a Claude Code **mod** alongside the status line. It runs inside Claude Code, so it can do things a status-line subprocess can't:
 
-- **One toggle above the prompt** — `[m] ☰` opens the buttons pane; press again (or Esc) to close
-- **Quick-action buttons pane** — every configured button grouped by type (panes / prompts / links / commands), each with a hotkey while the pane holds focus; prompt buttons fill or send a prompt, URL buttons open the browser, command buttons run a host command and toast the result
+- **One toggle above the prompt** — `[m] ☰` opens the launcher; press again (or Esc) to close
+- **Launcher pane** — one button per line in Claude Code's survey style (`t: 测试并修复`), grouped by type (panes / prompts / links / commands), each with a hotkey while the pane holds focus. Narrow terminal where the pane can't seat? The same sections expand inline in the band instead — the launcher works at any width
 - **`/ccsl-usage` command** — opens the pane; runs with zero model turns
 - **Per-request usage pane** — a sparkline of output tokens per request plus cumulative totals, recorded directly from each model request (no transcript parsing)
 - **Custom buttons** — edit `~/.claude/ccsl-buttons.json` (auto-created with a template of common panes, prompts, links and commands) to add your own: open panes, insert or send prompts, open URLs, or run host commands. Optional `group` gives a button its own section; `toggle` restyles the band button. `/ccsl-buttons` reloads it
