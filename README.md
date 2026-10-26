@@ -92,7 +92,7 @@ A Claude Code **mod** shipped alongside the status line. It runs inside Claude C
 `cc-statusline --install` offers to copy it to `~/.claude/skills/cc-statusline-mod/` (loaded at every startup); preview one session with `claude --plugin-dir /path/to/node_modules/@tangjianfang/claudecode-statusline/mod`. Then:
 
 1. Press `m` (or click `＊`, the accent-colored star at the left of the band) — the launcher opens
-2. Press a hotkey or click. Commands and links run at once; prompts and mode switches **fill the composer** — review, then Enter. Esc closes
+2. Click a button — or press its hotkey once the pane has the keys. Opened from the band it doesn't have them yet (the band holds the keys and focus is only a request); click the pane, or run `/ccsl`, which places it with the keyboard at any width. Commands and links run at once; prompts and mode switches **fill the composer** — review, then Enter. Esc closes
 
 What you see — every function on screen at once, grouped into colored cards:
 

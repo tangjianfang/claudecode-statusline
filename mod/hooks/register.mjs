@@ -1188,7 +1188,8 @@ export function register(on) {
   on('session.start', async ($, e, next) => {
     await safe(async () => {
       const saved = await $.store.get('usage-history');
-      if (Array.isArray(saved)) history = saved.filter(r => r && typeof r.out === 'number');
+      if (Array.isArray(saved))
+        history = saved.filter(r => r && typeof r.out === 'number').slice(-MAX_POINTS);
       const savedCost = await $.store.get('usage-cost-total');
       if (typeof savedCost === 'number') costAll = savedCost;
     }, null);
@@ -1264,12 +1265,14 @@ export function register(on) {
         rec.ctx = rec.in + rec.cacheR;
         history.push(rec);
         if (history.length > MAX_POINTS) history = history.slice(-MAX_POINTS);
-        if (rec.cost) {
-          costAll += rec.cost;
-          await safe(async () => {
-            await $.store.set('usage-cost-total', costAll);
-          }, null);
-        }
+        if (rec.cost) costAll += rec.cost;
+        await safe(async () => {
+          // The rolling window must survive restarts — 3.7.0 dropped this
+          // write, freezing every panel at whatever the store last held;
+          // cost-total rides the same write.
+          await $.store.set('usage-history', history);
+          await $.store.set('usage-cost-total', costAll);
+        }, null);
         // Context-budget alert: one toast per threshold per fill cycle; a
         // drop back under 70% (a compact, a new session) re-arms them.
         const ratio = rec.ctx / ctxWindow;
@@ -1364,6 +1367,17 @@ export function register(on) {
   // command's result line is colored by exit code — green done, red failed.
   function sectionEls(ui, pressButton, keyPrefix, cols) {
     let firstBtn = true;
+    // Button keys come from hotkey||label: two same-label buttons without
+    // hotkeys (or a hotkey spelling another button's label) would collide,
+    // and a duplicate key invalidates the whole tree. An ordinal suffix
+    // keeps every key unique no matter what the config hands us.
+    const seenKeys = new Set();
+    const keyOf = base => {
+      let k = base, i = 2;
+      while (seenKeys.has(k)) k = `${base}#${i++}`;
+      seenKeys.add(k);
+      return k;
+    };
     return sectionModel().map((s, si) => {
       const kids = [
         ui.Text({
@@ -1375,7 +1389,7 @@ export function register(on) {
       ];
       const buttonEl = b => {
         const common = {
-          key: `ccsl-btn-${b.hotkey || b.label}`,
+          key: keyOf(`ccsl-btn-${b.hotkey || b.label}`),
           hotkey: b.hotkey,
           plain: true,
           onPress: pressButton(b),
@@ -1475,8 +1489,11 @@ export function register(on) {
             await safe(async () => await $.ui.close({ id: BUTTONS_PANE }), null);
           }
           const text = typeof b.slash === 'string' ? `/${b.slash}` : b.prompt;
+          // replace, not insert: 'insert' splices at the caret, so a
+          // half-typed draft would end up mashed around the template; the
+          // button IS the next input (d.ts PromptFillMode).
           await $.prompt
-            .fill({ text, mode: 'insert' })
+            .fill({ text, mode: 'replace' })
             .then(r => {
               if (r && r.isFilled === false) {
                 $.ui.toast(`ccsl: 无法填入${r.refusal === 'dialog' ? '（对话框占用）' : r.refusal === 'no_composer' ? '（无可用的输入框）' : ''}`);
@@ -1514,7 +1531,15 @@ export function register(on) {
         } else {
           const paneId = b.pane || PANE;
           $.ui
-            .open({ id: paneId, title: b.label, focus: true, closeOnEscape: true })
+            .open({
+              id: paneId,
+              title: b.label,
+              focus: true,
+              closeOnEscape: true,
+              // rows is only a request, but without it the pane seats at a
+              // third — the launcher asks for its full height like /ccsl.
+              rows: paneId === BUTTONS_PANE ? launcherRows() : undefined,
+            })
             .then(() => $.ui.toast(`${b.label}: opened`))
             .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
         }
@@ -1663,7 +1688,7 @@ export function register(on) {
             }
             const text = typeof b.slash === 'string' ? `/${b.slash}` : b.prompt;
             await $.prompt
-              .fill({ text, mode: 'insert' })
+              .fill({ text, mode: 'replace' })
               .then(r => {
                 if (r && r.isFilled === false) {
                   $.ui.toast(`ccsl: 无法填入${r.refusal === 'dialog' ? '（对话框占用）' : r.refusal === 'no_composer' ? '（无可用的输入框）' : ''}`);
@@ -1699,7 +1724,13 @@ export function register(on) {
           } else {
             const paneId = b.pane || PANE;
             $.ui
-              .open({ id: paneId, title: b.label, focus: true, closeOnEscape: true })
+              .open({
+                id: paneId,
+                title: b.label,
+                focus: true,
+                closeOnEscape: true,
+                rows: paneId === BUTTONS_PANE ? launcherRows() : undefined,
+              })
               .then(() => $.ui.toast(`${b.label}: opened`))
               .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
           }
@@ -1734,7 +1765,8 @@ export function register(on) {
     if (!history.length) {
       await safe(async () => {
         const saved = await $.store.get('usage-history');
-        if (Array.isArray(saved)) history = saved.filter(r => r && typeof r.out === 'number');
+        if (Array.isArray(saved))
+        history = saved.filter(r => r && typeof r.out === 'number').slice(-MAX_POINTS);
       }, null);
     }
     const t = totals();
@@ -1756,7 +1788,13 @@ export function register(on) {
           onPress: () => {
             // Back to the launcher — panes are tabs, this un-buries it.
             try {
-              $.ui.open({ id: BUTTONS_PANE, title: '✳ 启动器', focus: true, closeOnEscape: true });
+              $.ui.open({
+                id: BUTTONS_PANE,
+                title: '✳ 启动器',
+                focus: true,
+                closeOnEscape: true,
+                rows: launcherRows(),
+              });
             } catch (err) {
               $.ui.toast(`ccsl: ${err && err.message}`);
             }
@@ -1782,7 +1820,7 @@ export function register(on) {
           key: 'ccsl-cost',
           color: 'yellow',
           children: pricing
-            ? `cost $${t.cost.toFixed(2)} 会话 · $${costAll.toFixed(2)} 累计`
+            ? `cost $${t.cost.toFixed(2)} 最近${history.length}次 · $${costAll.toFixed(2)} 累计`
             : 'cost — 无定价表（~/.claude/pricing.json，跑一次 pricing-updater 生成）',
         }),
         ...(ctxTxt
