@@ -74,6 +74,19 @@ let costAll = 0; // dollars, persisted via $.store
 let ctxWindow = 200000;
 let warnedCtx = 0;
 
+// Band visibility: hideBelow = the width (columns) under which the mod goes
+// SILENT — nothing drawn, anything open collapsed, a small terminal never
+// fought over (/ccsl still reaches the launcher); band:false hides the band
+// entirely for command-only users. A run button is ignored while it runs.
+let hideBelow = 100;
+let bandOn = true;
+let runningCmd = null;
+
+// Config-load outcome for the reload command and the pane's warning line:
+// null when everything loaded, else why entries were skipped or the parse
+// failed. Never silent — a config that quietly degrades is undiagnosable.
+let configNote = null;
+
 // Loaded button config (module state; session.start + /ccsl-buttons load it).
 let buttons = null;
 let toggle = null;
@@ -150,7 +163,7 @@ function computeCost(rec, rates) {
 }
 
 function fmt(n) {
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 995e3) return (n / 1e6).toFixed(1) + 'M'; // carry 999999 → 1.0M
   if (n >= 1e3) return Math.round(n / 1e3) + 'k';
   return String(n);
 }
@@ -197,9 +210,10 @@ function defaultToggle() {
 function configTemplate() {
   return `${JSON.stringify(
     {
-      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (fills /<command> — Enter runs it; permissions opens CC dialog, no mode setter API yet) | prompt=<text> (fills the composer — Enter sends; nothing runs unconfirmed) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button (label/hotkey). contextWindow: model context window in tokens, for the 80%/90% budget alerts (default 200000). hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.',
+      _doc: 'cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher (or /ccsl from the composer). Actions: pane=<pane id> | slash=<command> (fills /<command> — Enter runs it; permissions opens CC dialog, no mode setter API yet) | prompt=<text> (fills the composer — Enter sends; nothing runs unconfirmed) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button (label/hotkey). contextWindow: model window in tokens for the 80%/90% budget alerts (default 200000). hideBelow: below this many columns the mod hides completely (default 100). band:false removes the band row (/ccsl remains). hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — duplicates are dropped with a note. Reload with /ccsl-buttons.',
       toggle: { label: '＊', hotkey: 'm' },
       contextWindow: 200000,
+      hideBelow: 100,
       buttons: [
         { label: '快速模式', hotkey: 'f', slash: 'fast' },
         { label: '权限设置', hotkey: 'p', slash: 'permissions' },
@@ -220,7 +234,7 @@ function configTemplate() {
         { label: '议题', hotkey: 'i', url: 'https://github.com/tangjianfang/claudecode-statusline/issues' },
         { label: 'git状态', hotkey: 'g', run: ['git', 'status', '-sb'] },
         { label: '同步拉取', hotkey: 'y', run: ['git', 'pull', '--ff-only'] },
-        { label: '语法检查', hotkey: 'j', run: ['npm', 'run', 'check'] },
+        { label: '最近提交', hotkey: 'j', run: ['git', 'log', '--oneline', '-5'] },
         { label: '构建示例', hotkey: 'v', run: ['npm', 'run', 'build'] },
         { label: '其他命令', hotkey: 'z', group: 'misc', run: ['node', '--version'] },
       ],
@@ -236,6 +250,147 @@ function configTemplate() {
 // leaving a stale demo behind (a hand-edited file never matches and is always
 // preserved). When configTemplate() changes, append the outgoing template.
 const LEGACY_TEMPLATES = [
+`{
+  "_doc": "cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (fills /<command> — Enter runs it; permissions opens CC dialog, no mode setter API yet) | prompt=<text> (fills the composer — Enter sends; nothing runs unconfirmed) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button (label/hotkey). contextWindow: model context window in tokens, for the 80%/90% budget alerts (default 200000). hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.",
+  "toggle": {
+    "label": "＊",
+    "hotkey": "m"
+  },
+  "contextWindow": 200000,
+  "buttons": [
+    {
+      "label": "快速模式",
+      "hotkey": "f",
+      "slash": "fast"
+    },
+    {
+      "label": "权限设置",
+      "hotkey": "p",
+      "slash": "permissions"
+    },
+    {
+      "label": "模型选择",
+      "hotkey": "o",
+      "slash": "model"
+    },
+    {
+      "label": "压缩上下文",
+      "hotkey": "k",
+      "slash": "compact"
+    },
+    {
+      "label": "用量面板",
+      "hotkey": "u",
+      "pane": "ccsl-usage"
+    },
+    {
+      "label": "继续任务",
+      "hotkey": "n",
+      "prompt": "继续上次中断的任务：先回顾我们最近在做什么，然后接着完成。"
+    },
+    {
+      "label": "测试并修复",
+      "hotkey": "t",
+      "prompt": "运行完整测试套件；若有失败：定位根因后修复，再跑一遍直到全绿。总结改了什么。"
+    },
+    {
+      "label": "审查改动",
+      "hotkey": "r",
+      "prompt": "审查当前 git diff：找正确性 bug、边界情况和安全隐患，按严重程度列出，先不改代码。"
+    },
+    {
+      "label": "修复告警",
+      "hotkey": "l",
+      "prompt": "运行 lint 和类型检查，修复所有告警，不改变行为。"
+    },
+    {
+      "label": "重构文件",
+      "hotkey": "w",
+      "prompt": "重构当前文件：提高可读性、消除重复，不改变任何行为；改完运行测试验证。"
+    },
+    {
+      "label": "补文档",
+      "hotkey": "d",
+      "prompt": "为刚才的改动更新文档：面向新用户，简明，附使用示例。"
+    },
+    {
+      "label": "写提交",
+      "hotkey": "s",
+      "prompt": "把当前改动写成一条 conventional commit 并提交（不要推送），提交信息说明为什么这样改。"
+    },
+    {
+      "label": "定位bug",
+      "hotkey": "b",
+      "prompt": "根据我贴的错误信息系统性定位根因：先复现、再缩小范围；修复前先说明根因。"
+    },
+    {
+      "label": "性能分析",
+      "hotkey": "q",
+      "prompt": "找出当前最热路径的性能瓶颈：先测量再优化，给出前后对比数据。"
+    },
+    {
+      "label": "解释架构",
+      "hotkey": "x",
+      "prompt": "解释这个仓库：模块划分、关键数据流、要改某类东西该去哪里，面向新人。"
+    },
+    {
+      "label": "仓库",
+      "hotkey": "a",
+      "url": "https://github.com/tangjianfang/claudecode-statusline"
+    },
+    {
+      "label": "议题",
+      "hotkey": "i",
+      "url": "https://github.com/tangjianfang/claudecode-statusline/issues"
+    },
+    {
+      "label": "git状态",
+      "hotkey": "g",
+      "run": [
+        "git",
+        "status",
+        "-sb"
+      ]
+    },
+    {
+      "label": "同步拉取",
+      "hotkey": "y",
+      "run": [
+        "git",
+        "pull",
+        "--ff-only"
+      ]
+    },
+    {
+      "label": "语法检查",
+      "hotkey": "j",
+      "run": [
+        "npm",
+        "run",
+        "check"
+      ]
+    },
+    {
+      "label": "构建示例",
+      "hotkey": "v",
+      "run": [
+        "npm",
+        "run",
+        "build"
+      ]
+    },
+    {
+      "label": "其他命令",
+      "hotkey": "z",
+      "group": "misc",
+      "run": [
+        "node",
+        "--version"
+      ]
+    }
+  ]
+}
+`,
 `{
   "_doc": "cc-statusline mod buttons. The band shows one toggle; it opens the one-view launcher. Actions: pane=<pane id> | slash=<command> (fills /<command> — Enter runs it; permissions opens CC dialog, no mode setter API yet) | prompt=<text> (fills the composer — Enter sends; nothing runs unconfirmed) | url=<https://...> | run=[argv]. Sections by type: slash/pane=⚡快捷切换 prompt=✏提示词 url=🔗链接 run=$命令; group=<name> gives a button its own section. toggle restyles the band button (label/hotkey). hotkey: one digit/lowercase letter, works while the site (band or pane) holds focus — keep them unique across all buttons. Reload with /ccsl-buttons.",
   "toggle": {
@@ -888,7 +1043,12 @@ function normalizeButton(b) {
   else if (Array.isArray(b.run) && b.run.length && b.run.every(a => typeof a === 'string')) {
     out.run = b.run;
   } else return null;
-  if (typeof b.group === 'string' && b.group) out.group = clip(b.group, 24);
+  if (typeof b.group === 'string' && b.group) {
+    // The four builtin section keys are reserved — a group named like one
+    // would collide section keys and break the tree.
+    const g = clip(b.group, 24);
+    out.group = ['quick', 'prompt', 'url', 'run'].includes(g) ? `#${g}` : g;
+  }
   return out;
 }
 
@@ -905,15 +1065,37 @@ function normalizeToggle(t) {
 // loader and the /ccsl-buttons reload share it. Throws on bad JSON — callers
 // wrap in safe(), which leaves the previous state standing.
 function applyConfigText(text) {
-  const parsed = JSON.parse(text);
-  const list = Array.isArray(parsed.buttons)
-    ? parsed.buttons.map(normalizeButton).filter(Boolean)
-    : [];
+  const parsed = JSON.parse(text); // throws — callers catch and set configNote
+  const raw = Array.isArray(parsed.buttons) ? parsed.buttons : [];
+  const seenHk = new Set();
+  const list = [];
+  const skipped = [];
+  raw.forEach((b, i) => {
+    const norm = normalizeButton(b);
+    if (!norm) {
+      skipped.push(`#${i + 1} 无效`);
+      return;
+    }
+    if (norm.hotkey && seenHk.has(norm.hotkey)) {
+      delete norm.hotkey; // a duplicate would collide element keys and kill the tree
+      skipped.push(`#${i + 1} 热键重复`);
+    }
+    if (norm.hotkey) seenHk.add(norm.hotkey);
+    list.push(norm);
+  });
+  configNote = raw.length && skipped.length
+    ? `接受 ${list.length}/${raw.length} 条，跳过：${skipped.join('；')}`
+    : null;
+  if (raw.length && !list.length) {
+    configNote = `全部 ${raw.length} 条配置无效，已回退默认按钮`;
+  }
   buttons = list.length ? list : defaultButtons();
   toggle = normalizeToggle(parsed.toggle);
   if (typeof parsed.contextWindow === 'number' && parsed.contextWindow > 0) {
     ctxWindow = parsed.contextWindow;
   }
+  hideBelow = typeof parsed.hideBelow === 'number' && parsed.hideBelow >= 0 ? parsed.hideBelow : 100;
+  bandOn = parsed.band !== false;
   return buttons.length;
 }
 
@@ -972,9 +1154,20 @@ function displayRun(argv) {
 }
 
 function browserArgv(url) {
-  if (process.platform === 'win32') return ['cmd', '/c', 'start', '', url];
+  // rundll32 takes no shell: a URL's & can't start a second command the way
+  // `cmd /c start` let it (real-machine class of bug on Windows).
+  if (process.platform === 'win32') return ['rundll32', 'url.dll,FileProtocolHandler', url];
   if (process.platform === 'darwin') return ['open', url];
   return ['xdg-open', url];
+}
+
+// Windows: npm/npx/yarn/pnpm/bun are .cmd shims a shell-less spawn can't
+// resolve (ENOENT) — route them through cmd.
+function hostArgv(argv) {
+  if (process.platform === 'win32' && /^(npm|npx|yarn|pnpm|bun)(\.cmd)?$/i.test(argv[0])) {
+    return ['cmd', '/c', ...argv];
+  }
+  return argv;
 }
 
 // Content height the pane wants: headers + rows (two-column sections count
@@ -1010,32 +1203,36 @@ export function register(on) {
     }, null);
     // Load button config, creating the file with a working engineering
     // template when it doesn't exist yet so customizing is just "edit this
-    // file".
-    await safe(async () => {
+    // file". Apply BEFORE write: a failed write must not leave the session
+    // without buttons. A parse failure lands in configNote (the pane draws
+    // it) instead of silently degrading.
+    try {
       const home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME'));
-      if (!home) return;
-      const cfgPath = `${home}/.claude/ccsl-buttons.json`.replace(/\\/g, '/');
-      const text = await safe(async () => await $.fs.read(cfgPath), null);
-      if (text === null) {
-        await $.fs.write(cfgPath, configTemplate());
-        applyConfigText(configTemplate());
-      } else {
-        const up = templateUpgrade(text);
-        if (up) {
+      if (home) {
+        const cfgPath = `${home}/.claude/ccsl-buttons.json`.replace(/\\/g, '/');
+        const text = await safe(async () => await $.fs.read(cfgPath), null);
+        if (text === null) {
+          applyConfigText(configTemplate());
+          await safe(async () => await $.fs.write(cfgPath, configTemplate()), null);
+        } else {
           // Untouched legacy factory file — refresh it in place so upgrades
           // actually reach the person (an edited file never matches and is
           // always preserved).
-          await $.fs.write(cfgPath, up);
-          const n = applyConfigText(up);
-          $.ui.toast(`ccsl: 未修改的旧按钮模板已自动升级（${n} 个按钮）`);
-        } else {
-          applyConfigText(text);
+          const up = templateUpgrade(text);
+          applyConfigText(up || text);
+          if (up) {
+            await safe(async () => await $.fs.write(cfgPath, up), null);
+            $.ui.toast(`ccsl: 未修改的旧按钮模板已自动升级（${buttons.length} 个按钮）`);
+          }
         }
       }
-    }, null);
+    } catch (err) {
+      configNote = `配置解析失败：${err && err.message}（已回退默认）`;
+    }
     for (const cmd of [
       { name: 'ccsl-usage', description: 'Token usage stats + sparkline (cc-statusline mod)' },
       { name: 'ccsl-buttons', description: 'Reload ~/.claude/ccsl-buttons.json button config' },
+      { name: 'ccsl', description: 'Toggle the cc-statusline launcher pane' },
     ]) {
       await safe(async () => {
         await $.command.register(cmd);
@@ -1057,7 +1254,7 @@ export function register(on) {
       result = await n;
     }
     try {
-      const rec = usageFrom(e) || usageFrom(result);
+      const rec = usageFrom(result); // TurnStepInput carries no usage; the result does
       if (rec) {
         // Cost rides the record when the pricing table knows the model
         // (e.model is the engine's resolved name for this step); in+cacheR
@@ -1102,19 +1299,54 @@ export function register(on) {
     return { text: 'cc-statusline: opening the usage pane (Esc closes it; /ccsl-usage reopens).' };
   }).catch(() => {});
 
-  // /ccsl-buttons — reload the config file after editing it.
+  // /ccsl-buttons — reload the config file after editing it. Invalidates the
+  // draws (a reload without a redraw keeps showing the old buttons), reports
+  // skipped entries, and says why a parse failed instead of "could not load".
   on('command.run', { command: 'ccsl-buttons' }, async ($, e) => {
     let msg = 'cc-statusline: could not load the config.';
-    await safe(async () => {
+    try {
       const home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME'));
       const cfgPath = `${home}/.claude/ccsl-buttons.json`.replace(/\\/g, '/');
       const text = await $.fs.read(cfgPath);
       const up = templateUpgrade(text);
+      const n = applyConfigText(up || text);
       if (up) {
-        await $.fs.write(cfgPath, up);
-        msg = `cc-statusline: legacy template upgraded — ${applyConfigText(up)} button(s) from ${cfgPath}.`;
+        await safe(async () => await $.fs.write(cfgPath, up), null);
+        msg = `cc-statusline: 旧出厂模板已升级 — ${n} 个按钮（${cfgPath}）。`;
       } else {
-        msg = `cc-statusline: loaded ${applyConfigText(text)} button(s) from ${cfgPath}.`;
+        msg = `cc-statusline: loaded ${n} button(s) from ${cfgPath}.`;
+      }
+      if (configNote) msg += ` · ${configNote}`;
+      $.ui.invalidate('ui.render');
+    } catch (err) {
+      configNote = `配置加载失败：${err && err.message}（沿用上次配置）`;
+      msg = `cc-statusline: 配置加载失败 — ${err && err.message}（沿用上次配置）`;
+    }
+    return { text: msg };
+  }).catch(() => {});
+
+  // /ccsl — toggle the launcher from the composer. This open is
+  // person-attributed (the person's command): placed at ANY width and it
+  // TAKES the keyboard — the fix for the band path, where a press on the
+  // band holds the keys and the pane opens without them (hotkeys dead until
+  // a click or ctrl+x tab). Also the only entry while hidden below hideBelow.
+  on('command.run', { command: 'ccsl' }, async ($, e) => {
+    let msg = 'cc-statusline: opening the launcher.';
+    await safe(async () => {
+      const panes = await $.ui.panes();
+      if (panes.some(p => p.id === BUTTONS_PANE)) {
+        paneUp = false;
+        await $.ui.close({ id: BUTTONS_PANE });
+        msg = 'cc-statusline: launcher closed.';
+      } else {
+        paneUp = true;
+        await $.ui.open({
+          id: BUTTONS_PANE,
+          title: '✳ 启动器',
+          focus: true,
+          closeOnEscape: true,
+          rows: launcherRows(),
+        });
       }
     }, null);
     return { text: msg };
@@ -1131,6 +1363,7 @@ export function register(on) {
   // them at inconsistent widths and they collide with the text. The finished
   // command's result line is colored by exit code — green done, red failed.
   function sectionEls(ui, pressButton, keyPrefix, cols) {
+    let firstBtn = true;
     return sectionModel().map((s, si) => {
       const kids = [
         ui.Text({
@@ -1147,6 +1380,10 @@ export function register(on) {
           plain: true,
           onPress: pressButton(b),
         };
+        if (firstBtn) {
+          firstBtn = false;
+          common.autoFocus = true; // the focus ring starts here once the pane has the keys
+        }
         const detail = b.url ? displayUrl(b.url) : Array.isArray(b.run) ? displayRun(b.run) : null;
         return detail
           ? ui.Button({
@@ -1183,7 +1420,7 @@ export function register(on) {
         kids.push(
           ui.Text({
             key: `${keyPrefix}-lastrun`,
-            color: lastRun.exitCode === 0 ? 'green' : 'red',
+            color: lastRun.exitCode === 0 ? 'success' : 'error',
             children: `↳ ${lastRun.label}: exit ${lastRun.exitCode}${lastRun.tail ? ` · ${lastRun.tail}` : ''}`,
           })
         );
@@ -1211,7 +1448,7 @@ export function register(on) {
     if (e.requestId !== BUTTONS_PANE) return next(e);
     const ui = await safe(async () => $.ui.resolve(e), null);
     if (!ui || !ui.Box || !ui.Button || !ui.Text) return next(e);
-    const pressButton = b => () => {
+    const pressButton = b => async () => {
       // Dispatch by action type. Every $ call happens right here (the
       // $-noun discipline), and every path toasts — silent failures were
       // how dead buttons stayed undiagnosable.
@@ -1226,7 +1463,8 @@ export function register(on) {
           // Fill the composer and let the person press Enter — nothing runs
           // without confirmation (and a plugin's prompt.submit can't run
           // interactive commands like /model at all: it queues a turn of its
-          // own instead). Collapse whichever launcher form is up first
+          // own instead). Collapse whichever launcher form is up first — the
+          // close is AWAITED so the composer takes the keys before the fill
           // (inlined — $ nouns never reach helpers).
           if (inlineUp) {
             inlineUp = false;
@@ -1234,10 +1472,10 @@ export function register(on) {
           }
           if (paneUp) {
             paneUp = false;
-            $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+            await safe(async () => await $.ui.close({ id: BUTTONS_PANE }), null);
           }
           const text = typeof b.slash === 'string' ? `/${b.slash}` : b.prompt;
-          $.prompt
+          await $.prompt
             .fill({ text, mode: 'insert' })
             .then(r => {
               if (r && r.isFilled === false) {
@@ -1248,24 +1486,35 @@ export function register(on) {
             })
             .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
         } else if (Array.isArray(b.run)) {
-          $.ui.toast(`${b.label}: running…`);
-          $.process
-            .run(b.run, { timeoutMs: 600000 })
-            .then(r => {
-              const tail = ((r.stdout || '') + (r.stderr || '')).trim().slice(-160);
-              lastRun = { label: b.label, exitCode: r.exitCode, tail };
-              $.ui.invalidate('ui.render');
-              $.ui.toast(`${b.label}: exit ${r.exitCode}`);
-            })
-            .catch(err => {
-              lastRun = { label: b.label, exitCode: '?', tail: err && err.message };
-              $.ui.invalidate('ui.render');
-              $.ui.toast(`${b.label}: ${err && err.message}`);
-            });
+          // A second press while the same command runs is a no-op — two
+          // presses used to start two processes.
+          const runKey = b.run.join(' ');
+          if (runningCmd === runKey) {
+            $.ui.toast(`${b.label}: 已在运行中…`);
+          } else {
+            runningCmd = runKey;
+            $.ui.toast(`${b.label}: running…`);
+            $.process
+              .run(hostArgv(b.run), { timeoutMs: 600000 })
+              .then(r => {
+                const tail = ((r.stdout || '') + (r.stderr || '')).trim().slice(-160);
+                lastRun = { label: b.label, exitCode: r.exitCode, tail };
+                $.ui.invalidate('ui.render');
+                $.ui.toast(`${b.label}: exit ${r.exitCode}`);
+              })
+              .catch(err => {
+                lastRun = { label: b.label, exitCode: '?', tail: err && err.message };
+                $.ui.invalidate('ui.render');
+                $.ui.toast(`${b.label}: ${err && err.message}`);
+              })
+              .finally(() => {
+                runningCmd = null;
+              });
+          }
         } else {
           const paneId = b.pane || PANE;
           $.ui
-            .open({ id: paneId, title: 'Usage', focus: true, closeOnEscape: true })
+            .open({ id: paneId, title: b.label, focus: true, closeOnEscape: true })
             .then(() => $.ui.toast(`${b.label}: opened`))
             .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
         }
@@ -1273,7 +1522,27 @@ export function register(on) {
         $.ui.toast(`ccsl: ${err && err.message}`);
       }
     };
-    const kids = sectionEls(ui, pressButton, 'ccsl-pane', e.props && e.props.bodyColumns);
+    const kids = [];
+    if (configNote) {
+      // A config that quietly degrades is undiagnosable — the pane says it.
+      kids.push(ui.Text({ key: 'ccsl-cfgwarn', color: 'error', children: `⚠ ${configNote}` }));
+    }
+    // Usage overview at a glance (no pane-hopping); details stay one
+    // hotkey away in the usage pane.
+    {
+      const t2 = totals();
+      const bars2 = spark(history.slice(-40).map(r => r.out));
+      if (bars2) {
+        kids.push(
+          ui.Text({
+            key: 'ccsl-ov',
+            dimColor: true,
+            children: `${bars2}  ${fmt(t2.out)}o · $${t2.cost.toFixed(2)} · ${history.length}req`,
+          })
+        );
+      }
+    }
+    sectionEls(ui, pressButton, 'ccsl-pane', e.props && e.props.bodyColumns).forEach(k => kids.push(k));
     kids.push(
       ui.Text({
         key: 'ccsl-btns-hint',
@@ -1294,11 +1563,26 @@ export function register(on) {
   // the chain drew, and yield entirely while a survey holds the band.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props && e.props.hasSurvey) return next(e);
+    // band:false — command-only users want the row gone.
+    if (!bandOn) return next(e);
     const ui = await safe(async () => $.ui.resolve(e), null);
     if (!ui || !ui.Box || !ui.Button || !ui.Text) return next(e);
     // Re-sync with the engine's record (Esc closes, reloads, wider terms).
     const panes = await safe(async () => await $.ui.panes(), null);
     if (panes) paneUp = panes.some(p => p.id === BUTTONS_PANE && p.isPlaced !== false);
+    // hideBelow — a terminal narrower than this gets SILENCE: nothing drawn,
+    // anything open collapsed (checked AFTER the re-sync so an open pane is
+    // actually seen and closed); a small window is never fought over. /ccsl
+    // still reaches the launcher.
+    const width = e.props && e.props.bodyColumns;
+    if (typeof width === 'number' && width > 0 && width < hideBelow) {
+      if (inlineUp) inlineUp = false;
+      if (paneUp) {
+        paneUp = false;
+        $.ui.close({ id: BUTTONS_PANE }).catch(() => {});
+      }
+      return next(e);
+    }
     const t = toggle || defaultToggle();
     const toggleBtn = ui.Button({
       key: 'ccsl-toggle',
@@ -1360,7 +1644,7 @@ export function register(on) {
       // The inline fallback mirrors the pane's launcher — same sections, same
       // dispatch, duplicated here because the press factory must bind this
       // hook's $ (helpers never receive $ nouns).
-      const pressButton = b => () => {
+      const pressButton = b => async () => {
         try {
           if (b.url) {
             $.ui.toast(`opening ${b.url}`);
@@ -1375,10 +1659,10 @@ export function register(on) {
             }
             if (paneUp) {
               paneUp = false;
-              $.ui.close({ id: BUTTONS_PANE }).catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
+              await safe(async () => await $.ui.close({ id: BUTTONS_PANE }), null);
             }
             const text = typeof b.slash === 'string' ? `/${b.slash}` : b.prompt;
-            $.prompt
+            await $.prompt
               .fill({ text, mode: 'insert' })
               .then(r => {
                 if (r && r.isFilled === false) {
@@ -1389,24 +1673,33 @@ export function register(on) {
               })
               .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
           } else if (Array.isArray(b.run)) {
-            $.ui.toast(`${b.label}: running…`);
-            $.process
-              .run(b.run, { timeoutMs: 600000 })
-              .then(r => {
-                const tail = ((r.stdout || '') + (r.stderr || '')).trim().slice(-160);
-                lastRun = { label: b.label, exitCode: r.exitCode, tail };
-                $.ui.invalidate('ui.render');
-                $.ui.toast(`${b.label}: exit ${r.exitCode}`);
-              })
-              .catch(err => {
-                lastRun = { label: b.label, exitCode: '?', tail: err && err.message };
-                $.ui.invalidate('ui.render');
-                $.ui.toast(`${b.label}: ${err && err.message}`);
-              });
+            const runKey = b.run.join(' ');
+            if (runningCmd === runKey) {
+              $.ui.toast(`${b.label}: 已在运行中…`);
+            } else {
+              runningCmd = runKey;
+              $.ui.toast(`${b.label}: running…`);
+              $.process
+                .run(hostArgv(b.run), { timeoutMs: 600000 })
+                .then(r => {
+                  const tail = ((r.stdout || '') + (r.stderr || '')).trim().slice(-160);
+                  lastRun = { label: b.label, exitCode: r.exitCode, tail };
+                  $.ui.invalidate('ui.render');
+                  $.ui.toast(`${b.label}: exit ${r.exitCode}`);
+                })
+                .catch(err => {
+                  lastRun = { label: b.label, exitCode: '?', tail: err && err.message };
+                  $.ui.invalidate('ui.render');
+                  $.ui.toast(`${b.label}: ${err && err.message}`);
+                })
+                .finally(() => {
+                  runningCmd = null;
+                });
+            }
           } else {
             const paneId = b.pane || PANE;
             $.ui
-              .open({ id: paneId, title: 'Usage', focus: true, closeOnEscape: true })
+              .open({ id: paneId, title: b.label, focus: true, closeOnEscape: true })
               .then(() => $.ui.toast(`${b.label}: opened`))
               .catch(err => $.ui.toast(`ccsl: ${err && err.message}`));
           }
@@ -1455,6 +1748,20 @@ export function register(on) {
       key: 'ccsl-pane',
       flexDirection: 'column',
       children: [
+        ui.Button({
+          key: 'ccsl-back',
+          label: '← 返回启动器',
+          hotkey: 'b',
+          plain: true,
+          onPress: () => {
+            // Back to the launcher — panes are tabs, this un-buries it.
+            try {
+              $.ui.open({ id: BUTTONS_PANE, title: '✳ 启动器', focus: true, closeOnEscape: true });
+            } catch (err) {
+              $.ui.toast(`ccsl: ${err && err.message}`);
+            }
+          },
+        }),
         ui.Text({
           key: 'ccsl-spark',
           color: 'cyan',
@@ -1464,7 +1771,7 @@ export function register(on) {
           key: 'ccsl-totals',
           flexDirection: 'row',
           children: [
-            ui.Text({ key: 'ccsl-tot-req', dimColor: true, children: `requests ${history.length}   ` }),
+            ui.Text({ key: 'ccsl-tot-req', dimColor: true, children: `最近${history.length}次请求(含子代理)   ` }),
             ui.Text({ key: 'ccsl-tot-out', color: 'cyan', children: `out ${fmt(t.out)}   ` }),
             ui.Text({ key: 'ccsl-tot-in', color: 'green', children: `in ${fmt(t.in)}   ` }),
             ui.Text({ key: 'ccsl-tot-cr', color: 'magenta', children: `cacheR ${fmt(t.cacheR)}   ` }),

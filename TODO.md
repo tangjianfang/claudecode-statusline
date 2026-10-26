@@ -4,6 +4,32 @@
 > 依据：`claude plugin validate mod` 通过；API 对照 Claude Code 2.1.310 自带的 `claude-code.d.ts` 官方类型声明；Windows 相关两项用 Node 实测过。
 > 本文只列待办，**没有改任何代码**。
 
+## 处置记录（2026-10-26，v3.3.0–v3.8.0）
+
+清单在 3.3.0→3.7.0 的真机迭代中已消化大半，剩余项在 3.8.0 一并处置：
+
+| # | 处置 | 说明 |
+| --- | --- | --- |
+| A1 | ✅ 3.8.0 | 首按钮 `autoFocus`；`/ccsl` 命令入口（从输入框触发必得键盘）；pane 热键提示见 README。实机热键表现仍待验 |
+| A2 | ✅ 3.6.0/3.8.0 | `isFilled` 检查与 toast（3.6.0）；close 先 await 再 fill、无裸 submit（3.8.0）；submit 已整体改为 fill+Enter 确认制 |
+| A3 | ✅ 3.8.0 | 重载后 `invalidate`；失败带原因并沿用上次配置；接受/跳过计数（含热键去重）；全无效不静默；pane 顶部 ⚠ 行；先 apply 再 write |
+| A4 | ✅ 3.8.0 | buttons 面板顶部 usage 概览行；usage 面板 `← 返回启动器`（b） |
+| A5 | ✅ 3.8.0 | `/ccsl` 命令 + README 键位示例；`band:false` 配置 |
+| A6 | ✅ 3.6.0/3.8.0 | 提示词一律填入确认（3.6.0）；run 运行中防重复（3.8.0） |
+| B1 | ✅ 3.5.x | `flexWrap`、`rows`（按内容+边框估算）、`bodyColumns` 驱动的等宽卡片 |
+| B2 | ✅ 3.3.0/3.8.0 | plain 热键行；`(send)` 标记已随确认制移除；重复热键丢弃并提示 |
+| B3 | ❌ 不做 | 卡片布局已经用户实机验收；紧凑单行与之冲突 |
+| B4 | ◐ | `isWorking` 运行中标记已做（3.7.0）；band 实时数据不做——用户在 3.4.0 轮明确要求移除与状态栏重复的 U/C |
+| B5 | ◐ 3.8.0 | lastRun 用主题色 `success`/`error`；分区四色为用户验收的外观，保留 |
+| B6 | ✅ 3.8.0 | 概览行并入 buttons 面板；sparkline 自适应留待需要时再做 |
+| B7 | ◐ | 按钮 emoji 已全禁（3.5.2）；分区头 emoji 保留（渲染正常且已验收）；配置错误行已做；标题已是 `✳ 启动器` |
+| C1 | ✅ 3.8.0 | win32 下 `npm/npx/yarn/pnpm/bun` 派发经 `cmd /c`；URL 改 `rundll32 url.dll,FileProtocolHandler`（不经 shell，`&` 安全）。宿主行为待实机 |
+| C2 | ✅ 3.4.0/3.8.0 | tokens 按钮已删；面板明示「最近N次请求(含子代理)」；live 标签逻辑已随 buttonLabel 移除 |
+| C3 | ✅ 3.8.0 | 模板 `npm run check` 换成通用 `git log --oneline -5`；README 增配置安全说明；措辞已改「every call wrapped in safe()」 |
+| D | ✅ 多数 | fmt 进位、码点截断（3.5.0）、保留组名前缀、pane 标题用按钮名、`usageFrom(result)`；matcher 化 Pane hook 与 `CLAUDE_CONFIG_DIR` 暂缓（见下） |
+
+**暂缓**：Pane hook 的 `requestId` matcher 化（现运行时判判工作正常，matcher 是否支持该键未验证，不冒险）；`CLAUDE_CONFIG_DIR`（需与 statusline.js 统一处理，另议）；`claude plugin test` 测试基建（仓库无测试设施是明文设计，纯逻辑以 %TEMP% 冒烟脚本覆盖）。
+
 ## 0. 怎么读这份文档
 
 | 标记 | 含义 |

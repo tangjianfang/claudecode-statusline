@@ -158,10 +158,10 @@ Buttons live in `~/.claude/ccsl-buttons.json` (auto-created with the template ab
 ```
 
 - `slash` fills `/<command>` (fast, permissions, model, compact…); `prompt` fills the text — Enter sends it, nothing runs unconfirmed; `url`, `run`, `pane` open a bookmark, a host command, or a mod pane at once
-- `group` gives a button its own section; `toggle` restyles the band button (label/hotkey); `contextWindow` sets the token window for the budget alerts (default 200000)
-- hotkeys: one digit or lowercase letter, live while the launcher holds focus
+- `group` gives a button its own section; `toggle` restyles the band button (label/hotkey); `contextWindow` sets the token window for the budget alerts (default 200000); `hideBelow` hides the mod entirely below that many columns (default 100 — small terminals are never fought over, `/ccsl` still works); `band: false` removes the band row for command-only use
+- hotkeys: one digit or lowercase letter, live while the launcher holds focus — duplicates are dropped at load with a note
 
-Edit the file, then `/ccsl-buttons` reloads it. A file that still byte-matches an old factory template upgrades itself automatically on load — your edits are never overwritten.
+Edit the file, then `/ccsl-buttons` reloads it (skipped entries and duplicate hotkeys are reported; a broken file keeps the last good config and says why). A file that still byte-matches an old factory template upgrades itself automatically on load — your edits are never overwritten. Note the file is a one-press host-command entry point: treat write access to it accordingly.
 
 Remove the mod by deleting `~/.claude/skills/cc-statusline-mod/`. It never runs when `disableAllHooks` is true (that flag also disables custom status lines).
 
