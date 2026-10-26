@@ -129,12 +129,17 @@ On a terminal too narrow to seat the pane, the same view expands inline in the b
 
 A mod can't set permission modes (API limitation) — `p` opens Claude Code's permissions dialog, which is the shortest path.
 
-`/ccsl-usage` opens the usage pane: per-request output sparkline, cumulative totals, **cost** (`$X 会话 · $Y 累计` — computed from the same `~/.claude/pricing.json` the status line uses; run `pricing-updater` once to generate it) and the context estimate `ctx n/200k (%)`. A toast warns once when the context passes 80% and 90% of the window (set `contextWindow` in `~/.claude/ccsl-buttons.json`; re-arms after a `/compact`). While a turn runs, a dim `· 运行中` marks the band. Optional key binding:
+`/ccsl-usage` opens the usage pane: per-request output sparkline, cumulative totals, **cost** (`$X 会话 · $Y 累计` — computed from the same `~/.claude/pricing.json` the status line uses; run `pricing-updater` once to generate it) and the context estimate `ctx n/200k (%)`. The totals window is a rolling "last 240 requests" across sessions and includes subagent steps; two concurrent sessions share one history (last writer wins). A toast warns once when the context passes 80% and 90% of the window (set `contextWindow` in `~/.claude/ccsl-buttons.json`; re-arms after a `/compact`). While a turn runs, a dim `· 运行中` marks the band.
+
+`/ccsl` toggles the launcher straight from the composer — unlike the band button it always takes the keyboard (hotkeys work at once), it places at any width, and it's the entry point while the mod is hidden below `hideBelow`. Optional key bindings:
 
 ```json
 {
   "bindings": [
-    { "context": "Chat", "bindings": { "meta+u": "command:ccsl-usage" } }
+    { "context": "Chat", "bindings": {
+      "meta+u": "command:ccsl-usage",
+      "meta+e": "command:ccsl"
+    } }
   ]
 }
 ```
